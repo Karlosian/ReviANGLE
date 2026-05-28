@@ -90,9 +90,7 @@ d3dcompiler_47.dll
 !release/libEGL.dll
 !release/libGLESv2.dll
 !release/d3dcompiler_47.dll
-!redist/libEGL.dll
-!redist/libGLESv2.dll
-!redist/d3dcompiler_47.dll
+
 
 # --- Game files (never commit GD installation) ---
 GeometryDash.exe

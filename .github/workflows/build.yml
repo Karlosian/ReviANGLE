@@ -40,7 +40,7 @@ jobs:
           Copy-Item build/Release/opengl32.dll              artifacts/
           Copy-Item build/Release/gd-angle-editor.exe       artifacts/
           Copy-Item build/Release/ReviANGLE-Uninstall.exe   artifacts/
-          Copy-Item redist/*.dll                            artifacts/
+          Copy-Item release/*.dll                           artifacts/
           Copy-Item angle_config.default.ini                artifacts/angle_config.ini
           Copy-Item LICENSE artifacts/
           Copy-Item README.md artifacts/README.txt
