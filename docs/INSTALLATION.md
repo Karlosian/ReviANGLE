@@ -16,7 +16,6 @@ The path depends on how you installed GD:
 | Installation | Default path |
 |--------------|--------------|
 | Steam | `C:\Program Files (x86)\Steam\steamapps\common\Geometry Dash\` |
-| Epic Games | `C:\Program Files\Epic Games\GeometryDash\` |
 | Standalone | wherever you put it |
 
 You should see `GeometryDash.exe` in this folder.
