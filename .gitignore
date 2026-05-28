@@ -86,10 +86,13 @@ angle/
 libEGL.dll
 libGLESv2.dll
 d3dcompiler_47.dll
-# Exception: these DLLs are committed in release/ so CI can bundle them into the release ZIP.
+# Exception: these DLLs are committed in release/ or redist/ so CI can bundle them into the release ZIP.
 !release/libEGL.dll
 !release/libGLESv2.dll
 !release/d3dcompiler_47.dll
+!redist/libEGL.dll
+!redist/libGLESv2.dll
+!redist/d3dcompiler_47.dll
 
 # --- Game files (never commit GD installation) ---
 GeometryDash.exe
