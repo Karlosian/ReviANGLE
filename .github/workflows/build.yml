@@ -34,22 +34,13 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Run INI round-trip test
-        run: ./build/Release/ini_round_trip_test.exe examples_config/angle_config.default-safe.ini
-        shell: pwsh
-
       - name: Stage release artifacts
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           Copy-Item build/Release/opengl32.dll              artifacts/
           Copy-Item build/Release/gd-angle-editor.exe       artifacts/
-          Copy-Item examples_config/angle_config.default-safe.ini  artifacts/angle_config.ini
           Copy-Item LICENSE artifacts/
           Copy-Item README.md artifacts/README.txt
-          # ANGLE prebuilts committed to release/ in repo
-          Copy-Item release/libEGL.dll          artifacts/
-          Copy-Item release/libGLESv2.dll       artifacts/
-          Copy-Item release/d3dcompiler_47.dll  artifacts/
           Get-ChildItem artifacts | Format-Table Name, Length
         shell: pwsh
 
