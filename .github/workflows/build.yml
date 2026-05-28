@@ -1,0 +1,169 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CMAKE_GENERATOR: "Visual Studio 17 2022"
+
+jobs:
+  build:
+    name: Build (x64 Release)
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure (CMake)
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run INI round-trip test
+        run: ./build/Release/ini_round_trip_test.exe examples_config/angle_config.default-safe.ini
+        shell: pwsh
+
+      - name: Stage release artifacts
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item build/Release/opengl32.dll              artifacts/
+          Copy-Item build/Release/gd-angle-editor.exe       artifacts/
+          Copy-Item examples_config/angle_config.default-safe.ini  artifacts/angle_config.ini
+          Copy-Item LICENSE artifacts/
+          Copy-Item README.md artifacts/README.txt
+          # ANGLE prebuilts committed to release/ in repo
+          Copy-Item release/libEGL.dll          artifacts/
+          Copy-Item release/libGLESv2.dll       artifacts/
+          Copy-Item release/d3dcompiler_47.dll  artifacts/
+          Get-ChildItem artifacts | Format-Table Name, Length
+        shell: pwsh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReviANGLE-build-${{ github.sha }}
+          path: artifacts/
+          retention-days: 30
+
+      - name: Notify Discord on failure
+        if: failure() && env.DISCORD_WEBHOOK != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        shell: pwsh
+        run: |
+          $payload = @{
+            username   = "ReviANGLE CI"
+            avatar_url = "https://github.com/Reviusion.png"
+            embeds = @(@{
+              title       = "❌ Build failed: $env:GITHUB_WORKFLOW"
+              description = "**Job:** Build (x64 Release)`n**Repo:** $env:GITHUB_REPOSITORY`n**Ref:** ``$env:GITHUB_REF_NAME```n**Commit:** ``$($env:GITHUB_SHA.Substring(0,7))``  by **$env:GITHUB_ACTOR**"
+              url         = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+              color       = 15158332
+              footer      = @{ text = "Discord reviusion" }
+              timestamp   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            })
+          } | ConvertTo-Json -Depth 6 -Compress
+          Invoke-RestMethod -Uri $env:DISCORD_WEBHOOK -Method Post -ContentType 'application/json' -Body $payload
+
+  release:
+    name: Publish GitHub Release
+    runs-on: windows-2022
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ReviANGLE-build-${{ github.sha }}
+          path: release/
+
+      - name: Package release ZIP
+        run: |
+          $version = "${{ github.ref_name }}"
+          Compress-Archive -Path release/* -DestinationPath "ReviANGLE-$version-win64.zip" -Force
+          Get-Item "ReviANGLE-$version-win64.zip" | Select Name, Length
+        shell: pwsh
+
+      - name: Locate release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notesFile = "RELEASE_NOTES_$tag.md"
+          if (Test-Path $notesFile) {
+            "  Found: $notesFile"
+            "notes_file=$notesFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "has_notes=true"        | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "  No matching file: $notesFile  (will use auto-generated notes)"
+            "has_notes=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+
+      - name: Create release (with notes file)
+        if: steps.notes.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ReviANGLE-${{ github.ref_name }}-win64.zip
+          body_path: ${{ steps.notes.outputs.notes_file }}
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+          name: ReviANGLE ${{ github.ref_name }}
+
+      - name: Create release (auto-generated notes)
+        if: steps.notes.outputs.has_notes == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ReviANGLE-${{ github.ref_name }}-win64.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          name: ReviANGLE ${{ github.ref_name }}
+          body: |
+            ## ReviANGLE ${{ github.ref_name }}
+
+            See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for install instructions.
+
+      - name: Notify Discord on failure
+        if: failure() && env.DISCORD_WEBHOOK != ''
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        shell: pwsh
+        run: |
+          $payload = @{
+            username   = "ReviANGLE CI"
+            avatar_url = "https://github.com/Reviusion.png"
+            embeds = @(@{
+              title       = "❌ Release failed: $env:GITHUB_WORKFLOW"
+              description = "**Job:** Publish GitHub Release`n**Repo:** $env:GITHUB_REPOSITORY`n**Tag:** ``$env:GITHUB_REF_NAME```n**Commit:** ``$($env:GITHUB_SHA.Substring(0,7))``  by **$env:GITHUB_ACTOR**"
+              url         = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+              color       = 15158332
+              footer      = @{ text = "Discord reviusion" }
+              timestamp   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            })
+          } | ConvertTo-Json -Depth 6 -Compress
+          Invoke-RestMethod -Uri $env:DISCORD_WEBHOOK -Method Post -ContentType 'application/json' -Body $payload

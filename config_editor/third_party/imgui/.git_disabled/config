@@ -1,0 +1,10 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[remote "origin"]
+	url = https://github.com/ocornut/imgui.git
+	fetch = +refs/tags/v1.90.5:refs/tags/v1.90.5
