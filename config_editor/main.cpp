@@ -142,60 +142,39 @@ static std::string resolveIniPath() {
 static void applyTheme() {
     ImGuiStyle& s = ImGui::GetStyle();
     ImGui::StyleColorsDark();
-    
-    // Smooth, spacious layout sizes
-    s.WindowRounding    = 10.0f;
-    s.ChildRounding     = 8.0f;
-    s.FrameRounding     = 6.0f;
-    s.GrabRounding      = 5.0f;
-    s.ScrollbarRounding = 6.0f;
-    s.TabRounding       = 6.0f;
-    s.WindowPadding     = ImVec2(16, 16);
-    s.FramePadding      = ImVec2(10, 6);
-    s.ItemSpacing       = ImVec2(10, 8);
-    s.ItemInnerSpacing  = ImVec2(8, 6);
-    s.CellPadding       = ImVec2(6, 6);
-    s.WindowBorderSize  = 1.0f;
-    s.ChildBorderSize   = 1.0f;
-    s.PopupBorderSize   = 1.0f;
-    s.FrameBorderSize   = 0.0f;
+    s.WindowRounding   = 6.0f;
+    s.FrameRounding    = 4.0f;
+    s.GrabRounding     = 3.0f;
+    s.ScrollbarRounding= 4.0f;
+    s.TabRounding      = 4.0f;
+    s.ItemSpacing      = ImVec2(8, 6);
+    s.FramePadding     = ImVec2(8, 4);
 
     auto& c = s.Colors;
-    c[ImGuiCol_Text]                = ImVec4(0.95f, 0.95f, 0.98f, 1.0f);
-    c[ImGuiCol_TextDisabled]        = ImVec4(0.50f, 0.52f, 0.58f, 1.0f);
-    c[ImGuiCol_WindowBg]            = ImVec4(0.047f, 0.047f, 0.059f, 1.0f); // #0c0c0f (deep obsidian)
-    c[ImGuiCol_ChildBg]             = ImVec4(0.071f, 0.071f, 0.090f, 1.0f); // #121217 (dark graphite card bg)
-    c[ImGuiCol_PopupBg]             = ImVec4(0.071f, 0.071f, 0.090f, 0.98f);
-    c[ImGuiCol_Border]              = ImVec4(0.118f, 0.118f, 0.149f, 1.0f); // #1e1e26 (subtle border accent)
-    c[ImGuiCol_BorderShadow]        = ImVec4(0.00f, 0.00f, 0.00f, 0.0f);
-    c[ImGuiCol_FrameBg]             = ImVec4(0.094f, 0.094f, 0.125f, 1.0f); // #181820
-    c[ImGuiCol_FrameBgHovered]      = ImVec4(0.149f, 0.149f, 0.192f, 1.0f); // #262631
-    c[ImGuiCol_FrameBgActive]       = ImVec4(0.196f, 0.196f, 0.251f, 1.0f); // #323240
-    c[ImGuiCol_TitleBg]             = ImVec4(0.047f, 0.047f, 0.059f, 1.0f);
-    c[ImGuiCol_TitleBgActive]       = ImVec4(0.071f, 0.071f, 0.090f, 1.0f);
-    c[ImGuiCol_TitleBgCollapsed]    = ImVec4(0.047f, 0.047f, 0.059f, 1.0f);
-    c[ImGuiCol_MenuBarBg]           = ImVec4(0.071f, 0.071f, 0.090f, 1.0f);
-    c[ImGuiCol_ScrollbarBg]         = ImVec4(0.047f, 0.047f, 0.059f, 1.0f);
-    c[ImGuiCol_ScrollbarGrab]       = ImVec4(0.149f, 0.149f, 0.192f, 1.0f);
-    c[ImGuiCol_ScrollbarGrabHovered]= ImVec4(0.498f, 0.353f, 0.941f, 0.8f); // neon violet hover
-    c[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.498f, 0.353f, 0.941f, 1.0f); // neon violet active
-    c[ImGuiCol_CheckMark]           = ImVec4(0.173f, 0.714f, 0.490f, 1.0f); // mint green success
-    c[ImGuiCol_SliderGrab]          = ImVec4(0.498f, 0.353f, 0.941f, 0.9f); // neon violet grab
-    c[ImGuiCol_SliderGrabActive]    = ImVec4(0.612f, 0.494f, 1.000f, 1.0f); // brighter violet grab active
-    c[ImGuiCol_Button]              = ImVec4(0.149f, 0.149f, 0.192f, 1.0f); // #262631
-    c[ImGuiCol_ButtonHovered]       = ImVec4(0.498f, 0.353f, 0.941f, 1.0f); // neon violet button hover
-    c[ImGuiCol_ButtonActive]        = ImVec4(0.612f, 0.494f, 1.000f, 1.0f); // brighter violet button active
-    c[ImGuiCol_Header]              = ImVec4(0.498f, 0.353f, 0.941f, 0.3f);
-    c[ImGuiCol_HeaderHovered]       = ImVec4(0.498f, 0.353f, 0.941f, 0.6f);
-    c[ImGuiCol_HeaderActive]        = ImVec4(0.498f, 0.353f, 0.941f, 1.0f);
-    c[ImGuiCol_Separator]           = ImVec4(0.118f, 0.118f, 0.149f, 1.0f);
-    c[ImGuiCol_SeparatorHovered]    = ImVec4(0.498f, 0.353f, 0.941f, 0.78f);
-    c[ImGuiCol_SeparatorActive]     = ImVec4(0.498f, 0.353f, 0.941f, 1.0f);
-    c[ImGuiCol_Tab]                 = ImVec4(0.071f, 0.071f, 0.090f, 1.0f);
-    c[ImGuiCol_TabHovered]          = ImVec4(0.498f, 0.353f, 0.941f, 0.8f);
-    c[ImGuiCol_TabActive]           = ImVec4(0.498f, 0.353f, 0.941f, 1.0f);
-    c[ImGuiCol_TabUnfocused]        = ImVec4(0.071f, 0.071f, 0.090f, 1.0f);
-    c[ImGuiCol_TabUnfocusedActive]  = ImVec4(0.094f, 0.094f, 0.125f, 1.0f);
+    c[ImGuiCol_WindowBg]            = ImVec4(0.07f, 0.07f, 0.09f, 1.0f);
+    c[ImGuiCol_ChildBg]             = ImVec4(0.10f, 0.10f, 0.12f, 1.0f);
+    c[ImGuiCol_PopupBg]             = ImVec4(0.10f, 0.10f, 0.12f, 0.98f);
+    c[ImGuiCol_Border]              = ImVec4(0.20f, 0.22f, 0.26f, 1.0f);
+    c[ImGuiCol_FrameBg]             = ImVec4(0.16f, 0.17f, 0.20f, 1.0f);
+    c[ImGuiCol_FrameBgHovered]      = ImVec4(0.22f, 0.24f, 0.28f, 1.0f);
+    c[ImGuiCol_FrameBgActive]       = ImVec4(0.28f, 0.30f, 0.36f, 1.0f);
+    c[ImGuiCol_TitleBg]             = ImVec4(0.10f, 0.10f, 0.12f, 1.0f);
+    c[ImGuiCol_TitleBgActive]       = ImVec4(0.15f, 0.15f, 0.18f, 1.0f);
+    c[ImGuiCol_Tab]                 = ImVec4(0.14f, 0.16f, 0.20f, 1.0f);
+    c[ImGuiCol_TabHovered]          = ImVec4(0.30f, 0.40f, 0.55f, 1.0f);
+    c[ImGuiCol_TabSelected]         = ImVec4(0.20f, 0.30f, 0.45f, 1.0f);
+    c[ImGuiCol_TabDimmed]           = ImVec4(0.10f, 0.12f, 0.15f, 1.0f);
+    c[ImGuiCol_TabDimmedSelected]   = ImVec4(0.15f, 0.18f, 0.22f, 1.0f);
+    c[ImGuiCol_Header]              = ImVec4(0.20f, 0.30f, 0.45f, 0.45f);
+    c[ImGuiCol_HeaderHovered]       = ImVec4(0.25f, 0.35f, 0.55f, 0.65f);
+    c[ImGuiCol_HeaderActive]        = ImVec4(0.30f, 0.40f, 0.60f, 1.0f);
+    c[ImGuiCol_Button]              = ImVec4(0.18f, 0.20f, 0.25f, 1.0f);
+    c[ImGuiCol_ButtonHovered]       = ImVec4(0.30f, 0.34f, 0.42f, 1.0f);
+    c[ImGuiCol_ButtonActive]        = ImVec4(0.40f, 0.44f, 0.52f, 1.0f);
+    c[ImGuiCol_CheckMark]           = ImVec4(0.34f, 0.85f, 0.45f, 1.0f);
+    c[ImGuiCol_SliderGrab]          = ImVec4(0.40f, 0.55f, 0.85f, 1.0f);
+    c[ImGuiCol_SliderGrabActive]    = ImVec4(0.50f, 0.65f, 0.95f, 1.0f);
+    c[ImGuiCol_Separator]           = ImVec4(0.20f, 0.22f, 0.26f, 1.0f);
 }
 
 // ─────────────── Entry point ─────────────────────────────────────────────────
@@ -232,11 +211,15 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr; // don't write imgui.ini next to the exe
 
-    // Font loading: Segoe UI with Cyrillic + Latin glyph ranges.
-    // Atlas is bumped to 2048x2048 to avoid texture overflow with merged ranges.
+    // Cyrillic support: ImGui's default font (ProggyClean) is Latin-only, so
+    // Russian descriptions render as `?` boxes. Load Segoe UI from the system
+    // fonts folder with the Cyrillic glyph range merged in.
+    //
+    // IMPORTANT: only request glyph ranges we actually need. Building the
+    // atlas with 20k+ glyphs (e.g. the entire U+2010..U+25FF range) overflows
+    // the default 1024x1024 texture and ImGui silently falls back to a broken
+    // state, crashing on first frame.
     {
-        io.Fonts->TexDesiredWidth = 2048;
-
         wchar_t winDirW[MAX_PATH] = {};
         GetWindowsDirectoryW(winDirW, MAX_PATH);
         char winDir[MAX_PATH] = {};
@@ -245,9 +228,18 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         char fontPath[MAX_PATH] = {};
         std::snprintf(fontPath, MAX_PATH, "%s\\Fonts\\segoeui.ttf", winDir);
 
-        static const ImWchar textRanges[] = {
+        // Static range table: Default (Latin) + Cyrillic + a tiny set of
+        // bullet/checkmark/dot glyphs used in our UI strings.
+        // Each pair is {first, last} inclusive; terminated with {0, 0}.
+        static const ImWchar ranges[] = {
             0x0020, 0x00FF,   // Basic Latin + Latin-1 Supplement
             0x0400, 0x052F,   // Cyrillic + Cyrillic Supplement
+            0x2010, 0x205E,   // General Punctuation (en-dash, em-dash, …)
+            0x2122, 0x2122,   // ™
+            0x2190, 0x21FF,   // Arrows (← → ↑ ↓ ↔ ▸ etc.)
+            0x2500, 0x257F,   // Box Drawing (│ ┌ ┐ ─ etc.)
+            0x25A0, 0x25FF,   // Geometric Shapes (● ◆ ▪ ◯ etc.)
+            0x2713, 0x2717,   // ✓ ✗
             0,
         };
 
@@ -255,32 +247,14 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int) {
         cfg.OversampleH = 2;
         cfg.OversampleV = 1;
         cfg.PixelSnapH  = true;
-
-        ImFont* loaded = io.Fonts->AddFontFromFileTTF(fontPath, 17.0f, &cfg, textRanges);
-
-        if (loaded) {
-            char symbolFontPath[MAX_PATH] = {};
-            std::snprintf(symbolFontPath, MAX_PATH, "%s\\Fonts\\seguisym.ttf", winDir);
-
-            static const ImWchar symbolRanges[] = {
-                0x2000, 0x206F,   // General Punctuation
-                0x2190, 0x21FF,   // Arrows
-                0x2600, 0x26FF,   // Misc Symbols
-                0,
-            };
-
-            ImFontConfig symbolCfg{};
-            symbolCfg.MergeMode   = true;
-            symbolCfg.OversampleH = 2;
-            symbolCfg.OversampleV = 1;
-            symbolCfg.PixelSnapH  = true;
-
-            io.Fonts->AddFontFromFileTTF(symbolFontPath, 17.0f, &symbolCfg, symbolRanges);
-        } else {
+        // 17 px is readable for both English and Russian on 1080p.
+        ImFont* loaded = io.Fonts->AddFontFromFileTTF(
+            fontPath, 17.0f, &cfg, ranges);
+        if (!loaded) {
+            // Fallback: keep ImGui's built-in font (Latin-only) so the editor
+            // at least launches if Segoe UI isn't present.
             io.Fonts->AddFontDefault();
         }
-
-        io.Fonts->Build();
     }
 
     applyTheme();

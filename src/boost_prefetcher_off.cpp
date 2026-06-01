@@ -33,12 +33,10 @@ namespace boost_prefetcher_off {
             "Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Layers",
             0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
         {
-            char exePath[MAX_PATH] = {};
-            DWORD len = GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-            if (len > 0 && exePath[0] != '\0') {
-                const char* value = "DISABLEPREFETCHER";
-                RegSetValueExA(key, exePath, 0, REG_SZ, (const BYTE*)value, (DWORD)strlen(value) + 1);
-            }
+            char exePath[MAX_PATH];
+            GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+            const char* value = "DISABLEPREFETCHER";
+            RegSetValueExA(key, exePath, 0, REG_SZ, (const BYTE*)value, (DWORD)strlen(value) + 1);
             RegCloseKey(key);
         }
 

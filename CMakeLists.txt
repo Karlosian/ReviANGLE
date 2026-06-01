@@ -1,11 +1,25 @@
 cmake_minimum_required(VERSION 3.20)
 project(ReviANGLE LANGUAGES CXX C
-    DESCRIPTION  "OpenGL -> ANGLE -> D3D11 proxy for Geometry Dash"
+    DESCRIPTION  "OpenGL -> ANGLE -> D3D11 / Vulkan proxy for Geometry Dash"
     HOMEPAGE_URL "https://github.com/Reviusion/ReviANGLE"
 )
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Backend selection options
+option(REVIANGLE_BACKEND_D3D11 "Build with DirectX 11 backend (ANGLE)" ON)
+option(REVIANGLE_BACKEND_VULKAN "Build with Vulkan backend" OFF)
+
+if (NOT REVIANGLE_BACKEND_D3D11 AND NOT REVIANGLE_BACKEND_VULKAN)
+    message(FATAL_ERROR "One backend must be enabled: REVIANGLE_BACKEND_D3D11 or REVIANGLE_BACKEND_VULKAN")
+endif()
+
+if (REVIANGLE_BACKEND_D3D11 AND REVIANGLE_BACKEND_VULKAN)
+    message(FATAL_ERROR "Choose exactly one backend: D3D11 and Vulkan both provide WGL entry points")
+endif()
+
+message(STATUS "ReviANGLE backends: D3D11=${REVIANGLE_BACKEND_D3D11} Vulkan=${REVIANGLE_BACKEND_VULKAN}")
 
 # Static-link MSVC runtime — eliminates MSVCP140.dll / VCRUNTIME140.dll
 # external dependencies, makes DLL self-contained
@@ -26,7 +40,6 @@ set(SRC
     src/angle_loader.cpp
     src/gl_proxy.cpp
     src/gl_proxy_ext.cpp
-    src/wgl_proxy.cpp
 
     # common utilities
     src/common/iat_hook.cpp
@@ -52,10 +65,7 @@ set(SRC
     src/boost_asset_loader.cpp
     src/boost_vsync.cpp
     src/boost_sleep.cpp
-    src/boost_no_fs_optimizations.cpp
     src/boost_heap.cpp
-    src/d3d11_deferred_renderer.cpp
-
     # render boosts
     src/boost_depth_off.cpp
     src/boost_mipmap_off.cpp
@@ -70,8 +80,7 @@ set(SRC
     src/boost_loader_cache.cpp
 
     # CPU boosts
-    src/boost_sse_memcpy.cpp
-    src/boost_string_intern.cpp
+    src/boost_sse_memcpy.cpp    src/boost_string_intern.cpp
     src/boost_mimalloc_full.cpp
     src/boost_silent.cpp
 
@@ -83,33 +92,26 @@ set(SRC
 
     # anti-stutter
     src/boost_allow_tearing.cpp
+    src/boost_waitable_swap.cpp
     src/boost_frame_pacing.cpp
     src/boost_mmcss.cpp
     src/boost_shader_warmup.cpp
     src/boost_low_latency.cpp
-    src/boost_d3d11_unlock.cpp
-    src/boost_process_perf.cpp
-    src/boost_pcore_pin.cpp
-    src/boost_gpu_residency.cpp
-    src/boost_safe_latency.cpp
 
     # GD-specific
     src/boost_skip_intro.cpp
-    src/boost_obj_pool.cpp
-    src/boost_plist_bin.cpp
-    src/boost_skip_effects.cpp
-    src/boost_level_predecode.cpp
+    src/boost_obj_pool.cpp    src/boost_plist_bin.cpp
+    src/boost_skip_effects.cpp    src/boost_level_predecode.cpp
     src/boost_anti_stutter.cpp
 
-    # advanced render
-    src/boost_fbo_cache.cpp
+    # advanced render    src/boost_fbo_cache.cpp
     src/boost_triple_buffer.cpp
     src/boost_no_aa.cpp
     src/boost_blend_opt.cpp
+
     # cocos2d-x
     src/boost_particle_throttle.cpp
-    src/boost_texcache_preload.cpp
-    src/boost_label_cache.cpp
+    src/boost_texcache_preload.cpp    src/boost_label_cache.cpp
     src/boost_scheduler_skip.cpp
     src/boost_drawcall_sort.cpp
     src/boost_index_gen.cpp
@@ -121,14 +123,8 @@ set(SRC
     src/boost_mem_priority.cpp
     src/boost_stack_trim.cpp
 
-    # stutter monitor
-    src/boost_stutter_monitor.cpp
-
-    # pipeline
-    src/boost_drawsort.cpp
-    src/boost_scissor_tight.cpp
-    src/boost_vertex_dedup.cpp
-    src/boost_batch_coalesce.cpp
+    # pipeline    src/boost_scissor_tight.cpp
+    src/boost_vertex_dedup.cpp    src/boost_batch_coalesce.cpp
 
     # network
     src/boost_dns_prefetch.cpp
@@ -157,13 +153,25 @@ set(SRC
 
     # opt-in optimizations
     src/boost_present_skip.cpp
-
-    # v2.0.0 — new low-impact modules (safe on old + new HW)
+    # v3.0.0 modules
+    src/boost_d3d11_unlock.cpp
+    src/boost_process_perf.cpp
+    src/boost_pcore_pin.cpp
+    src/boost_gpu_residency.cpp
+    src/boost_stutter_monitor.cpp
+    src/boost_no_fso.cpp
     src/boost_effect_lod.cpp
     src/boost_drawcall_budget.cpp
     src/boost_iocp_loader.cpp
     src/boost_thread_qos.cpp
 )
+
+# Conditional backend-specific sources
+if (REVIANGLE_BACKEND_D3D11 OR REVIANGLE_BACKEND_VULKAN)
+    list(APPEND SRC
+        src/wgl_proxy.cpp
+    )
+endif()
 
 add_library(${OUT_NAME} SHARED ${SRC} src/gl_exports.def)
 
@@ -172,15 +180,33 @@ target_include_directories(${OUT_NAME} PRIVATE
     angle/include/
 )
 
+# Link libraries based on selected backend
+if (REVIANGLE_BACKEND_D3D11)
+    target_link_libraries(${OUT_NAME} PRIVATE
+        winmm       # timeBeginPeriod
+        kernel32
+        user32
+        gdi32       # D3DKMT
+        advapi32    # RegCreateKeyEx
+        psapi       # GetModuleInformation
+        dxgi        # IDXGIDevice1, IDXGIFactory5
+        ws2_32      # Winsock (DNS prefetch, HTTP pool, etc.)
+    )
+    target_compile_definitions(${OUT_NAME} PRIVATE REVIANGLE_BACKEND_D3D11=1)
+endif()
+
+if (REVIANGLE_BACKEND_VULKAN)
+    # Vulkan is selected through ANGLE at runtime. The DLL still exports OpenGL,
+    # so keep the EGL/WGL bridge and let libEGL/libGLESv2 talk to Vulkan.
+    target_compile_definitions(${OUT_NAME} PRIVATE REVIANGLE_BACKEND_VULKAN=1)
+endif()
+
+# Always link common libraries
 target_link_libraries(${OUT_NAME} PRIVATE
-    winmm       # timeBeginPeriod
+    winmm
     kernel32
     user32
-    gdi32       # D3DKMT
-    advapi32    # RegCreateKeyEx
-    psapi       # GetModuleInformation
-    dxgi        # IDXGIDevice1, IDXGIFactory5
-    ws2_32      # Winsock (DNS prefetch, HTTP pool, etc.)
+    ws2_32
 )
 
 target_compile_definitions(${OUT_NAME} PRIVATE
@@ -208,53 +234,57 @@ set_target_properties(${OUT_NAME} PROPERTIES
 set(EDITOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/config_editor)
 set(IMGUI_DIR  ${EDITOR_DIR}/third_party/imgui)
 
-add_executable(gd_angle_editor WIN32
-    ${EDITOR_DIR}/main.cpp
-    ${EDITOR_DIR}/editor_app.cpp
-    ${EDITOR_DIR}/ini_parser.cpp
-    ${EDITOR_DIR}/schema.cpp
+if (EXISTS ${IMGUI_DIR}/imgui.cpp)
+    add_executable(gd_angle_editor WIN32
+        ${EDITOR_DIR}/main.cpp
+        ${EDITOR_DIR}/editor_app.cpp
+        ${EDITOR_DIR}/ini_parser.cpp
+        ${EDITOR_DIR}/schema.cpp
 
-    ${IMGUI_DIR}/imgui.cpp
-    ${IMGUI_DIR}/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui_tables.cpp
-    ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/imgui_demo.cpp
+        ${IMGUI_DIR}/imgui.cpp
+        ${IMGUI_DIR}/imgui_draw.cpp
+        ${IMGUI_DIR}/imgui_tables.cpp
+        ${IMGUI_DIR}/imgui_widgets.cpp
+        ${IMGUI_DIR}/imgui_demo.cpp
 
-    ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
-)
+        ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
+    )
 
-target_include_directories(gd_angle_editor PRIVATE
-    ${EDITOR_DIR}
-    ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
-)
+    target_include_directories(gd_angle_editor PRIVATE
+        ${EDITOR_DIR}
+        ${IMGUI_DIR}
+        ${IMGUI_DIR}/backends
+    )
 
-target_link_libraries(gd_angle_editor PRIVATE
-    d3d11
-    dxgi
-    d3dcompiler
-    dwmapi
-    imm32
-)
+    target_link_libraries(gd_angle_editor PRIVATE
+        d3d11
+        dxgi
+        d3dcompiler
+        dwmapi
+        imm32
+    )
 
-target_compile_definitions(gd_angle_editor PRIVATE
-    UNICODE
-    _UNICODE
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-    _CRT_SECURE_NO_WARNINGS
-    IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
-)
+    target_compile_definitions(gd_angle_editor PRIVATE
+        UNICODE
+        _UNICODE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        _CRT_SECURE_NO_WARNINGS
+        IMGUI_DISABLE_OBSOLETE_FUNCTIONS=1
+    )
 
-if (MSVC)
-    target_compile_options(gd_angle_editor PRIVATE /O2 /Oi /utf-8)
-    target_link_options(gd_angle_editor PRIVATE /OPT:REF /OPT:ICF /SUBSYSTEM:WINDOWS)
+    if (MSVC)
+        target_compile_options(gd_angle_editor PRIVATE /O2 /Oi /utf-8)
+        target_link_options(gd_angle_editor PRIVATE /OPT:REF /OPT:ICF /SUBSYSTEM:WINDOWS)
+    endif()
+
+    set_target_properties(gd_angle_editor PROPERTIES
+        OUTPUT_NAME "gd-angle-editor"
+    )
+else()
+    message(WARNING "gd_angle_editor skipped: ImGui sources not found at ${IMGUI_DIR}. Install ImGui or add the third_party/imgui folder to enable the editor build.")
 endif()
-
-set_target_properties(gd_angle_editor PROPERTIES
-    OUTPUT_NAME "gd-angle-editor"
-)
 
 # Round-trip test: console app that loads + flips one value + saves and diffs.
 # Verifies the preservation-aware INI parser keeps comments byte-for-byte.
@@ -269,20 +299,3 @@ target_compile_definitions(ini_round_trip_test PRIVATE
 if (MSVC)
     target_compile_options(ini_round_trip_test PRIVATE /utf-8)
 endif()
-
-# ============================================================================
-# Uninstaller — removes opengl32.dll and related files
-# ============================================================================
-add_executable(reviangle_uninstall WIN32 src/uninstaller.cpp)
-target_compile_definitions(reviangle_uninstall PRIVATE
-    UNICODE
-    _UNICODE
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-)
-if (MSVC)
-    target_link_options(reviangle_uninstall PRIVATE /SUBSYSTEM:WINDOWS)
-endif()
-set_target_properties(reviangle_uninstall PROPERTIES
-    OUTPUT_NAME "ReviANGLE-Uninstall"
-)

@@ -17,6 +17,10 @@ static void WINAPI noop_OutputDebugStringA(LPCSTR) {
     // intentionally empty
 }
 
+static void WINAPI noop_OutputDebugStringW(LPCWSTR) {
+    // intentionally empty
+}
+
 static int noop_printf(const char*, ...) {
     return 0;
 }
@@ -28,10 +32,12 @@ namespace boost_silent {
 
         s_origODS = (OutputDebugStringAFn)iat::hookInMainExe(
             "kernel32.dll", "OutputDebugStringA", (void*)noop_OutputDebugStringA);
+        
+        iat::hookInMainExe("kernel32.dll", "OutputDebugStringW", (void*)noop_OutputDebugStringW);
 
         iat::hookInMainExe("msvcrt.dll", "printf", (void*)noop_printf);
         iat::hookInMainExe("ucrtbase.dll", "printf", (void*)noop_printf);
 
-        angle::log("silent_debug: active");
+        angle::log("silent_debug: active (ASCII and Unicode suppressed)");
     }
 }

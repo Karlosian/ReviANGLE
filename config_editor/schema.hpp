@@ -32,9 +32,3 @@ const std::vector<OptionDef>& schemaAll();
 
 // Distinct sections in display order.
 const std::vector<std::string>& schemaSections();
-
-// Get localized user-friendly name for a key
-const char* getFriendlyName(const char* section, const char* key, bool isRussian);
-
-// Get localized user-friendly name for a section/tab
-const char* getFriendlySection(const char* section, bool isRussian);

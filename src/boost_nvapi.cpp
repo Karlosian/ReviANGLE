@@ -5,12 +5,13 @@
 // across launches:
 //
 //   PREFERRED_PSTATE         = P0       — pin GPU to max performance state
-//                                          (no clock-spike jitter; weak GPUs
-//                                          otherwise idle down and ramp up
-//                                          slowly under load)
+//                                          (no clock-spike jitter; GT 630M
+//                                          otherwise idles to 270 MHz and
+//                                          ramps slowly under load)
 //   POWER_MIZER_LEVEL_AC     = MAX_PERF — driver power policy: max perf
 //   THREADED_OPTIMIZATION    = ON       — driver-side multi-threaded
-//                                          submission (helps on high core count CPUs)
+//                                          submission (helps on >2-core CPU,
+//                                          neutral on 2-core)
 //   VSYNC_MODE               = OFF      — driver-level vsync forced off
 //                                          (combines with our allow_tearing
 //                                          to guarantee no driver-side wait)

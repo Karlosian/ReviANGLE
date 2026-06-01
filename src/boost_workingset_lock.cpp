@@ -1,6 +1,6 @@
 // Boost: Working Set Lock (HARD min)
 // ------------------------------------------------------------------------
-// Anti-stutter for memory-constrained systems (or when multitasking in
+// Anti-stutter for RAM-tight systems (8 GB with browser/IDE running in
 // parallel). Forces Windows to keep our minimum working set resident in
 // physical memory — no page-outs during gameplay, no minor-page-fault
 // stutters when other apps demand RAM.
@@ -47,17 +47,34 @@ namespace boost_workingset_lock {
     void apply() {
         if (!Config::get().workingset_lock) return;
 
-        // x86 process => max addressable ~4 GB (with /LARGEADDRESSAWARE).
-        // Reserve generous max headroom; min is the hard floor.
+#ifndef QUOTA_LIMITS_HARDWS_MIN_ENABLE
+#define QUOTA_LIMITS_HARDWS_MIN_ENABLE 0x00000001
+#endif
+#ifndef QUOTA_LIMITS_HARDWS_MAX_DISABLE
+#define QUOTA_LIMITS_HARDWS_MAX_DISABLE 0x00000008
+#endif
+
         struct Pair { SIZE_T minMb; SIZE_T maxMb; };
+#ifdef _WIN64
+        // x64 process has vast virtual address space.
+        // Provide large headroom and disable hard max ceiling.
+        const Pair attempts[] = {
+            { 1024, 16384 }, // 1 GB floor, 16 GB ceiling fallback
+            { 512,  8192 },  // 512 MB floor, 8 GB ceiling fallback
+            { 256,  4096 },  // 256 MB floor, 4 GB ceiling fallback
+        };
+#else
+        // x86 process => max addressable ~4 GB (with /LARGEADDRESSAWARE).
         const Pair attempts[] = {
             { 384, 1536 },   // ideal: 384 MB hot pages locked, 1.5 GB ceiling
             { 256, 1024 },   // fallback if 384 too tight
             { 192,  768 },   // last resort
         };
+#endif
 
         const bool privOk = enableSeIncWorkingSet();
-        const DWORD flags = privOk ? QUOTA_LIMITS_HARDWS_MIN_ENABLE : 0;
+        // Use MIN_ENABLE to enforce the floor, and MAX_DISABLE to ensure the OS never caps our maximum working set under memory pressure.
+        const DWORD flags = privOk ? (QUOTA_LIMITS_HARDWS_MIN_ENABLE | QUOTA_LIMITS_HARDWS_MAX_DISABLE) : 0;
 
         for (const auto& a : attempts) {
             SIZE_T minWs = a.minMb * 1024u * 1024u;

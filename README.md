@@ -2,7 +2,7 @@
 
 # ReviANGLE
 
-**A drop-in `opengl32.dll` proxy that routes Geometry Dash's OpenGL through Google ANGLE → DirectX 11.**
+**A drop-in `opengl32.dll` proxy that routes Geometry Dash's OpenGL through Google ANGLE → DirectX 11/Vulkan.**
 
 *Unlock FPS, reduce input lag, eliminate microstutters — all on hardware Geometry Dash never officially targeted.*
 
@@ -22,22 +22,22 @@
 
 ReviANGLE is a performance mod for **Geometry Dash 2.2** that replaces the game's `opengl32.dll` with a custom proxy. The proxy:
 
-1. **Translates OpenGL → DirectX 11** via [Google ANGLE](https://chromium.googlesource.com/angle/angle).
+1. **Translates OpenGL → DirectX 11 / Vulkan** via [Google ANGLE](https://chromium.googlesource.com/angle/angle).
 2. Adds **84 low-level performance modules** that hook into ANGLE's hot path:
    - GL state deduplication (skip 30-50 % of redundant cocos2d-x calls)
    - High-resolution frame pacing (no CPU spin)
-   - ANGLE mutex stripping (+6-12 % CPU gain)
-   - P-core pinning (no E-core migration on hybrid CPUs)
-   - VRAM reservation against texture eviction
+   - DXGI low-latency present (1-frame queue)
+   - Optional half-resolution rendering with linear upscale (~30-50 % GPU win on weak GPUs)
+   - Optional idle-frame Present elision (saves GPU power on menus)
    - NVAPI driver profile (PSTATE=P0, max-perf, no driver vsync)
-   - Windows Power Throttling killswitch
-   - 75+ other tweaks — see [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md)
-3. Ships with a standalone GUI configurator with bilingual (EN/RU) descriptions for every option.
+   - Working-set lock so Windows doesn't page our hot data out
+   - GPU thread priority bump
+   - 40+ other tweaks — see [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md)
+3. Ships with **ReviANGLE Studio** — a standalone GUI configurator with bilingual (EN/RU) descriptions for every option.
 
 ### Why?
 
-Vanilla GD was written for OpenGL on hardware that's now **15+ years old**. On low-end systems (laptops with integrated graphics or older GPUs) it stutters, caps at 60 FPS, and wastes huge amounts of CPU on redundant driver calls. ReviANGLE rewrites that pipeline.
-
+Vanilla GD was written for OpenGL on hardware that's now **15+ years old**. On weak laptops (Intel HD / GT 630M / etc.) it stutters, caps at 60 FPS, and wastes huge amounts of CPU on redundant driver calls. ReviANGLE rewrites that pipeline.
 
 ### Quick install
 
@@ -70,14 +70,14 @@ Or edit `angle_config.ini` directly — it's plain text with full bilingual comm
 
 ### Performance numbers
 
-Measured on the tested hardware, average over 10 runs of the same hard demon (Acu):
+Measured on the tested hardware, average over 10 runs of the same extreme demon (Acu):
 
 | Build | Avg FPS | 1 % Low | Frame-time variance |
 |-------|---------|---------|---------------------|
 | Vanilla GD 2.2 | 88 | 41 | high (visible micro-stutter) |
-| **ReviANGLE 2.0.0** | **156 (+77 %)** | **121 (+195 %)** | **very low** |
+| **ReviANGLE 1.0.2** | **156 (+77 %)** | **121 (+195 %)** | **very low** |
 
-*FPS uncapped (`unlock_fps_cap=true`), pacer at `frame_pacing_target=120`. Your numbers will differ — these are reference figures from the tested system.*
+*FPS uncapped (`unlock_fps_cap=true`), pacer at `frame_pacing_target=120`. Your numbers will differ — these are reference figures from the developer's machine.*
 
 ### Building from source
 
@@ -93,7 +93,7 @@ cmake --build build --config Release
 
 Output goes to `build\Release\` — `opengl32.dll` and `gd-angle-editor.exe`.
 
----
+You'll also need the ANGLE prebuilt binaries (`libEGL.dll`, `libGLESv2.dll`, `d3dcompiler_47.dll`) — see [`docs/BUILDING.md`](docs/BUILDING.md#angle-prebuilts).
 
 ### Project layout
 
@@ -118,7 +118,8 @@ ReviANGLE/
 │   ├── BUILDING.md               ← Build instructions, ANGLE setup
 │   ├── INSTALLATION.md           ← End-user install guide
 │   └── CONFIG_REFERENCE.md       ← Full reference of every config option
-├── examples_config/              ← Pre-tuned config presets
+├── examples/                     ← Pre-tuned configs
+├── release/                      ← Pre-built binaries (drop-in bundle)
 ├── .github/                      ← CI + issue templates
 ├── CMakeLists.txt
 ├── CONTRIBUTING.md
@@ -136,6 +137,11 @@ ReviANGLE/
 | First-level stutter | Enable `shader_warmup=true` |
 | Online features broken | Disable `online_block_gameplay` (set to `false`) |
 | AMD/Intel GPU crashes | Disable `nvapi_profile` and `gpu_forcer` |
+| Vulkan startup crash with Globed | Out-Of-Memory mapping PBOs. Ensure `workingset_lock=false` (now default) or see [`docs/STABILITY_GUIDE.md`](docs/STABILITY_GUIDE.md) |
+| Startup crash (DEP violation in `glew32.dll`) | Conflict with `icon_ninja` mod. Remove the mod or see [`docs/STABILITY_GUIDE.md`](docs/STABILITY_GUIDE.md) |
+| Background static noise / visual glitches | Active experimental rendering hacks. Ensure `atlas_merge=false`, `batch_force=false`, and `depth_off=false` in `angle_config.ini` |
+| Custom background shader mod (`cgytrus.menu-shaders`) shows noise or freezes | **INCOMPATIBLE WITH VULKAN**. The heavy custom shaders crash the Vulkan driver. Either remove the mod, or set `backend=d3d11` in `angle_config.ini`. |
+
 
 For more, see [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
 
@@ -173,21 +179,22 @@ This is a **third-party** modification. Use at your own risk. **Always back up y
 
 ReviANGLE — это мод производительности для **Geometry Dash 2.2**, который подменяет `opengl32.dll` игры на свой proxy. Proxy:
 
-1. **Переводит OpenGL → DirectX 11** через [Google ANGLE](https://chromium.googlesource.com/angle/angle).
+1. **Переводит OpenGL → DirectX 11 / Vulkan** через [Google ANGLE](https://chromium.googlesource.com/angle/angle).
 2. Добавляет **84 низкоуровневых модуля оптимизации**:
    - Дедупликация GL state (пропуск 30-50 % redundant вызовов cocos2d-x)
    - Frame pacing на high-res waitable timer (без CPU spin)
-   - Снятие мьютекса ANGLE (+6-12 % CPU)
-   - Привязка рендер-потока к P-cores (никаких E-core миграций)
-   - Резервация VRAM (текстуры не выгружаются)
-   - NVAPI driver profile (PSTATE=P0, max-perf, выключение vsync)
-   - Отключение Power Throttling Windows
-   - И ещё 75+ tweaks — [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md)
-3. Идёт с отдельным GUI-конфигуратором с двуязычными (EN/RU) описаниями каждой опции.
+   - DXGI low-latency present (очередь = 1 кадр)
+   - Опционально: half-res рендер с линейным апскейлом (~30-50 % GPU выигрыш на слабых GPU)
+   - Опционально: пропуск Present на idle-кадрах (экономия мощности GPU на меню)
+   - NVAPI driver profile (PSTATE=P0, max-perf, выключение vsync на драйверном уровне)
+   - Working-set lock — Windows не выгружает наши горячие страницы под памяти-pressure
+   - Boost приоритета GPU thread
+   - И ещё 40+ tweaks — [`docs/CONFIG_REFERENCE.md`](docs/CONFIG_REFERENCE.md)
+3. Идёт с **ReviANGLE Studio** — отдельным GUI-конфигуратором с двуязычными (EN/RU) описаниями каждой опции.
 
 ### Зачем?
 
-Ванильный GD написан под OpenGL на железо **15+ летней давности**. На слабых системах (ноутбуках с интегрированной графикой или старыми видеокартами) он лагает, упирается в 60 FPS и тратит огромное количество CPU на redundant driver calls. ReviANGLE переписывает этот pipeline.
+Ванильный GD написан под OpenGL на железо **15+ летней давности**. На слабых лаптопах (Intel HD / GT 630M / etc.) он лагает, упирается в 60 FPS и тратит огромное количество CPU на redundant driver calls. ReviANGLE переписывает этот pipeline.
 
 
 ### Быстрая установка
@@ -242,12 +249,12 @@ ANGLE-бинарники лицензированы под [BSD 3-Clause](https:
 
 ### Дисклеймер
 
-Это **сторонняя** модификация. Используй на свой страх и риск. **Всегда делай бэкап папки `Geometry Dash`** перед установкой. Автор не аффилирован с RobTop Games.
+Это **сторонняя** модификация. Используй на свой страх и риск. **Всегда делай бэкап папки `Geometry Dash`** перед установкой. Автор не аффилирован с RobTop Games и не несёт ответственности за повреждения сейвов, баны аккаунта (не наблюдалось при тестировании, но теоретически возможны), или любые другие адверс-эффекты.
 
 ---
 
 <div align="center">
 
-Made by **Reviusion** with love ❤️
+Made by **Reviusion** with love and a 13-year-old laptop ❤️
 
 </div>

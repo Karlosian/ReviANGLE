@@ -29,15 +29,10 @@ namespace boost_mmcss {
         auto setThread = (AvSetMmThreadFn)GetProcAddress(g_avrt, "AvSetMmThreadCharacteristicsA");
         s_revert = (AvRevertMmThreadFn)GetProcAddress(g_avrt, "AvRevertMmThreadCharacteristics");
 
-        if (!setThread || !s_revert) {
-            angle::log("mmcss: AvSetMmThreadCharacteristicsA%s%s not found",
-                       !setThread ? "" : " (AvRevertMmThreadCharacteristics missing)",
-                       !s_revert && setThread ? "AvRevertMmThreadCharacteristics" : "");
-            if (g_avrt) {
-                FreeLibrary(g_avrt);
-                g_avrt = nullptr;
-            }
-            s_revert = nullptr;
+        if (!setThread) {
+            angle::log("mmcss: AvSetMmThreadCharacteristicsA not found");
+            FreeLibrary(g_avrt);
+            g_avrt = nullptr;
             return;
         }
 

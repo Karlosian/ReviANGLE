@@ -1,5 +1,5 @@
 // Boost: Disable Anti-Aliasing
-// MSAA is extremely expensive on low-end GPUs — it multiplies
+// MSAA is extremely expensive on low-end GPUs like GT 630M — it multiplies
 // fill rate cost by the sample count. GD's pixel art style doesn't benefit
 // from AA. We intercept glEnable(GL_MULTISAMPLE) and force MSAA samples to 0.
 

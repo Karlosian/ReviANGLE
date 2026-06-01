@@ -1,14 +1,11 @@
 // Boost: GetProcAddress cache
 // GD / cocos2d calls GetProcAddress thousands of times at startup.
 // We cache results in a hash map so repeat lookups are O(1).
-// Uses atomic operations for the common case (cache hit) to avoid
-// lock contention on the hot path.
 
 #include <windows.h>
 #include <unordered_map>
 #include <string>
 #include <mutex>
-#include <atomic>
 #include "config.hpp"
 #include "common/iat_hook.hpp"
 #include "angle_loader.hpp"
@@ -27,12 +24,7 @@ struct ProcKeyHash {
     }
 };
 
-struct CacheEntry {
-    FARPROC proc;
-    std::atomic<bool> valid{false};
-};
-
-static std::unordered_map<ProcKey, CacheEntry, ProcKeyHash> g_cache;
+static std::unordered_map<ProcKey, FARPROC, ProcKeyHash> g_cache;
 static std::mutex g_mu;
 
 using GetProcAddressFn = FARPROC(WINAPI*)(HMODULE, LPCSTR);
@@ -45,26 +37,17 @@ static FARPROC WINAPI hooked_GetProcAddress(HMODULE hModule, LPCSTR lpProcName) 
     }
 
     ProcKey key{hModule, lpProcName};
-
-    // Fast path: check cache without lock using find-if-you-can pattern
-    // First do a quick lookup
     {
         std::lock_guard<std::mutex> lk(g_mu);
         auto it = g_cache.find(key);
-        if (it != g_cache.end() && it->second.valid.load(std::memory_order_acquire)) {
-            return it->second.proc;
-        }
+        if (it != g_cache.end()) return it->second;
     }
 
-    // Cache miss — call the original function
     FARPROC result = s_origGetProcAddress(hModule, lpProcName);
 
-    // Store in cache
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        auto& entry = g_cache[key];
-        entry.proc = result;
-        entry.valid.store(true, std::memory_order_release);
+        g_cache[key] = result;
     }
     return result;
 }

@@ -12,9 +12,9 @@
 //   3. Spin (YieldProcessor) the last sub-millisecond for tight precision.
 //   4. Anchor next-frame timestamp to the ideal tick — long-term FPS stays exact.
 //
-// Why the timer matters on low-end or 2-core CPUs:
+// Why the timer matters on weak / 2-core CPUs (i5-3230M, GT 630M and friends):
 // the previous Sleep+spin path burned a whole core on YieldProcessor for up to
-// ~remaining ms every frame. On a CPU with few hardware threads, that core was directly competing
+// ~remaining ms every frame. On a 2-thread CPU that core was directly competing
 // with cocos2d's main thread — visible as "frame_pacing reduces FPS during
 // effects". Using the kernel timer keeps the wait truly idle, so the main
 // thread gets the full core back.
@@ -36,14 +36,8 @@ static HANDLE        s_timer       = nullptr;
 static bool          s_useHighRes  = false;
 
 // Reserve the last ~100 µs for the spin loop — timer wakeups can return up to
-// ~50-100 µs late even with HIGH_RESOLUTION, so we still need a tight final spin.
-// NOTE: reduced from 200 µs to 100 µs to reduce CPU contention and microstutters.
+// ~100 µs late even with HIGH_RESOLUTION, so we still need a tight final spin.
 static constexpr double kSpinSlackSec = 0.0001;
-
-// Jitter margin DISABLED - it causes microstutters by allowing inconsistent timing.
-// For competitive play we want CONSISTENT frame times, not "smooth" variance.
-// If GPU is fast enough, we pace. If not, we let it run. No middle ground.
-static constexpr double kJitterMarginSec = 0.0001;  // 0.1ms - effectively disabled
 
 // Resolve target FPS: explicit config override > monitor refresh rate > 0.
 static int detectTargetFps() {
@@ -117,21 +111,13 @@ namespace boost_frame_pacing {
 
     // Called from wgl_wglSwapBuffers BEFORE eglSwapBuffers.
     void prePresent() {
-        if (!g_active || s_targetDt <= 0.0 || !Config::get().frame_pacing || Config::get().megahack_detected) return;
+        if (!g_active || s_targetDt <= 0.0) return;
 
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
         double elapsed = (double)(now.QuadPart - s_lastPresent.QuadPart) /
                          (double)s_freq.QuadPart;
-
-        // Jitter margin: if we're within 1.5ms of the target, don't pace at all.
-        // This lets natural frame time variance (±0.5-1ms) through without stutter.
         double remaining = s_targetDt - elapsed;
-        if (remaining <= 0 || remaining < kJitterMarginSec) {
-            // Frame completed early or on time — anchor to NOW, no wait needed.
-            s_lastPresent = now;
-            return;
-        }
 
         bool waited = false;
         if (remaining > kSpinSlackSec) {
@@ -154,24 +140,13 @@ namespace boost_frame_pacing {
                 if (sleepMs > 0) Sleep(sleepMs);
             }
 
-            // Phase 2: gentle wait for the last ~100 µs of precision.
-            // Use Sleep(0) instead of YieldProcessor — gives other threads a chance
-            // to run without burning CPU cycles in a tight loop.
-            LONGLONG targetTicks = s_lastPresent.QuadPart +
-                (LONGLONG)(s_targetDt * (double)s_freq.QuadPart);
+            // Phase 2: tight spin for the last ~200 µs of precision.
             do {
-                Sleep(0);  // Yield to other threads, don't burn CPU
+                YieldProcessor();
                 QueryPerformanceCounter(&now);
-            } while (now.QuadPart < targetTicks);
-            waited = true;
-        } else {
-            // Very small remaining time — just sleep(0) a few times.
-            for (int i = 0; i < 3; i++) {
-                Sleep(0);
-                QueryPerformanceCounter(&now);
-                if ((double)(now.QuadPart - s_lastPresent.QuadPart) / s_freq.QuadPart >= s_targetDt)
-                    break;
-            }
+                elapsed = (double)(now.QuadPart - s_lastPresent.QuadPart) /
+                          (double)s_freq.QuadPart;
+            } while (elapsed < s_targetDt);
             waited = true;
         }
 

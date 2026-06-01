@@ -98,6 +98,7 @@ The full reference of every option in `angle_config.ini`. For interactive editin
 | `mmcss_pro_audio` | bool | `true` | MMCSS Pro Audio class — 1 ms scheduling. |
 | `shader_warmup` | bool | `false` | Pre-compile linked programs at startup via `glValidateProgram` to force ANGLE D3D11 deferred HLSL JIT. Reduces first-use shader stutter. |
 | `low_latency` | bool | `true` | `IDXGIDevice1::SetMaximumFrameLatency(1)` — input lag −33 ms at 60 FPS. |
+| `gl_no_error` | bool | `true` | `EGL_CONTEXT_OPENGL_NO_ERROR_KHR` — kills per-call ANGLE validation. |
 | `unlock_fps_cap` | bool | `true` | Hook `CCApplication::setAnimationInterval` to remove cocos2d 60 FPS cap. |
 | `anti_stutter` | bool | `true` | Disable affinity auto-update + EcoQoS thread throttling. |
 
@@ -112,7 +113,7 @@ The full reference of every option in `angle_config.ini`. For interactive editin
 | `plist_binary` | bool | `false` | Binary plist cache. **Save corruption risk on bad write**. |
 | `plist_cache_dir` | string | `plist_cache` | Cache dir when enabled. |
 | `skip_shake_flash` | bool | `false` | Skip shake/flash effects. **Heuristic hooks are glitchy**. |
-| `level_predecode` | bool | `false` | Pre-decode level on load. Not recommended on CPUs with few threads due to scheduling overhead. |
+| `level_predecode` | bool | `false` | Pre-decode level on load. **Only 2 CPU threads** = no benefit. |
 | `predecode_threads` | int | `2` | Threads for level predecode. |
 
 ## Section: `[BoostRenderAdv]`
@@ -193,7 +194,7 @@ The full reference of every option in `angle_config.ini`. For interactive editin
 | `numa_aware` | bool | `true` | Bind to local NUMA node. No-op on single-NUMA. |
 | `huge_pages` | bool | `false` | 2 MB large pages. **Needs `SeLockMemoryPrivilege` (admin)**. |
 | `prefetcher_off` | bool | `false` | Disable Win Superfetch/Prefetcher. **Needs admin**. |
-| **`workingset_lock`** | **bool** | **`true`** | **Hard-pin min working set (`SetProcessWorkingSetSizeEx` + `QUOTA_LIMITS_HARDWS_MIN_ENABLE`). Anti-stutter on systems with limited memory.** |
+| **`workingset_lock`** | **bool** | **`true`** | **Hard-pin min working set (`SetProcessWorkingSetSizeEx` + `QUOTA_LIMITS_HARDWS_MIN_ENABLE`). Anti-stutter on 8 GB systems.** |
 | **`gpu_thread_prio`** | **bool** | **`true`** | **`IDXGIDevice::SetGPUThreadPriority(+7)`. Boost driver's GPU command-list submission thread.** |
 | **`present_skip_idle`** | **bool** | **`false`** | **(opt-in) Skip `eglSwapBuffers` on frames with zero draw calls (idle menus, paused level). Cap of 4 consecutive skips bounds input latency. Saves GPU power on idle scenes.** |
 | **`halfres_render`** | **bool** | **`false`** | **(opt-in) Render entire game at half resolution (W/2 × H/2) to an offscreen FBO, upscale via `glBlitFramebuffer` + `GL_LINEAR` on Present. ~30-50% GPU savings on weak GPUs. Visible quality drop on UI text.** |

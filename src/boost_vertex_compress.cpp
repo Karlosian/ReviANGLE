@@ -1,7 +1,7 @@
 // Boost: vertex compression
 // Converts float32 vertex positions to int16 (short) format, halving bandwidth.
 // DISABLED BY DEFAULT — precision loss may cause visual artifacts.
-// Enable only if GPU is severely bandwidth-bottlenecked (e.g. older cards on slow DDR memory).
+// Enable only if GPU is severely bandwidth-bottlenecked (like GT 630M on DDR3).
 
 #include <windows.h>
 #include "config.hpp"

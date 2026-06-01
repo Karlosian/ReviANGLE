@@ -15,21 +15,18 @@ namespace boost_gamemode {
         // HKCU\System\GameConfigStore\Children\<exe path> with GameDVR + GameMode flags.
 
         char exePath[MAX_PATH] = {};
-        if (!GetModuleFileNameA(nullptr, exePath, MAX_PATH) || exePath[0] == '\0') {
-            angle::log("game_mode: could not get exe path");
-            return;
-        }
+        GetModuleFileNameA(nullptr, exePath, MAX_PATH);
 
-        // Build the full subkey path
+        // Open or create the GameConfigStore key
+        HKEY hKey = nullptr;
         std::string subKey = "System\\GameConfigStore\\Children\\";
         subKey += exePath;
 
-        // Replace backslashes with underscores for the registry key name
+        // Replace backslashes with underscores for the registry key
         for (auto& c : subKey) { if (c == '\\') c = '/'; }
 
-        HKEY hKey = nullptr;
         LONG result = RegCreateKeyExA(HKEY_CURRENT_USER,
-            subKey.c_str(), 0, nullptr,
+            "System\\GameConfigStore", 0, nullptr,
             REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr);
 
         if (result == ERROR_SUCCESS) {

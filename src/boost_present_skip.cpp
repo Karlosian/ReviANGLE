@@ -51,7 +51,7 @@ void apply() {
 // Called from wgl_proxy.cpp's swap path AFTER frame-pacing has decided this
 // is a real present (i.e. not waiting on the timer).
 extern "C" bool gdangle_shouldSkipPresent() {
-    if (!s_enabled || Config::get().megahack_detected) return false;
+    if (!s_enabled) return false;
     s_total++;
 
     unsigned long long da = gdangle_getDrawArraysCount();

@@ -16,6 +16,7 @@ The path depends on how you installed GD:
 | Installation | Default path |
 |--------------|--------------|
 | Steam | `C:\Program Files (x86)\Steam\steamapps\common\Geometry Dash\` |
+| Epic Games | `C:\Program Files\Epic Games\GeometryDash\` |
 | Standalone | wherever you put it |
 
 You should see `GeometryDash.exe` in this folder.
@@ -34,7 +35,7 @@ Go to https://github.com/Reviusion/ReviANGLE/releases and download `ReviANGLE-vX
 
 The ZIP contains:
 ```
-ReviANGLE-v2.0.0-win64.zip
+ReviANGLE-v1.0.2-win64.zip
 ├── opengl32.dll              ← the proxy mod
 ├── libEGL.dll                ← ANGLE
 ├── libGLESv2.dll             ← ANGLE
@@ -66,7 +67,7 @@ Run `gd-angle-editor.exe`. The GUI shows every option with bilingual description
 
 Or edit `angle_config.ini` in any text editor — every option has full bilingual comments.
 
-The shipped default is a safe, balanced preset for legacy or mid-range hardware. If you have different hardware, the most important option to retune is `frame_pacing_target` — see the comment in the file.
+The shipped default is the **best-feel preset** for the developer's tested hardware (Intel i5-3230M + GT 630M, 90 Hz). If you have different hardware, the most important option to retune is `frame_pacing_target` — see the comment in the file.
 
 ### 6. Launch GD
 

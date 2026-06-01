@@ -87,7 +87,3 @@ namespace boost_instancing {
     // call at end of frame to flush last pending batch
     void endFrame() { if (g_active) flushBatch(); }
 }
-
-// Called from wgl_wglSwapBuffers at frame boundary — flushes any pending
-// instanced batch before present so state doesn't carry over to next frame.
-extern "C" void boost_instancing_flush() { flushBatch(); }

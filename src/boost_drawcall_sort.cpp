@@ -55,35 +55,28 @@ void flushSorted() {
     g_drawBuffer.clear();
 }
 
-} // anonymous namespace
-
-// Called from wgl_wglSwapBuffers at frame boundary — ensures buffered
-// commands are flushed before present, preventing stale texture bindings.
-extern "C" void boost_drawcall_sort_flush() { flushSorted(); }
+} // namespace
 
 static void WINAPI hooked_glDrawArrays(GLenum mode, GLint first, GLsizei count) {
-    if (!g_active) {
-        if (s_origDrawArrays) s_origDrawArrays(mode, first, count);
+    if (g_active && mode == 0x0004) { // GL_TRIANGLES only
+        g_drawBuffer.push_back({g_currentTexId, mode, first, count});
+        if (g_drawBuffer.size() >= 256) flushSorted();
         return;
     }
-
-    // Get current texture binding
-    GLint texBinding = 0;
-    if (s_getIntegerv) s_getIntegerv(0x8069, &texBinding); // GL_TEXTURE_BINDING_2D
-
-    // Buffer the draw command
-    g_drawBuffer.push_back({static_cast<GLuint>(texBinding), mode, first, count});
+    flushSorted();
+    s_origDrawArrays(mode, first, count);
 }
 
-static void WINAPI hooked_glBindTexture(GLenum target, GLuint texture) {
-    if (s_origBindTex) s_origBindTex(target, texture);
-    if (target == 0x0DE1) { // GL_TEXTURE_2D
-        g_currentTexId = texture;
+static void WINAPI hooked_glBindTexture(GLenum target, GLuint tex) {
+    if (g_active && target == 0x0DE1) {
+        g_currentTexId = tex;
+        // Don't call real bind yet — deferred to flush
+        return;
     }
+    s_origBindTex(target, tex);
 }
 
 namespace boost_drawcall_sort {
-    void flush() { flushSorted(); }
     void apply() {
         if (!Config::get().drawcall_sort) return;
 
@@ -98,6 +91,7 @@ namespace boost_drawcall_sort {
         }
     }
 
+    void flush() { flushSorted(); }
     void* getDrawArraysHook() { return g_active ? (void*)hooked_glDrawArrays : nullptr; }
     void* getBindTexHook()    { return g_active ? (void*)hooked_glBindTexture : nullptr; }
 }

@@ -6,7 +6,6 @@
 #include <windows.h>
 #include <vector>
 #include <mutex>
-#include <atomic>
 #include "config.hpp"
 #include "gl_proxy.hpp"
 #include "angle_loader.hpp"
@@ -49,12 +48,9 @@ struct FBOPool {
     void release(GLuint fbo) {
         if (fbo == 0) return;
         std::lock_guard<std::mutex> lk(mu);
-        // FIX: Use size_t for comparison instead of int cast
-        size_t currentSize = available.size();
-        if (currentSize < (size_t)maxSize) {
+        if ((int)available.size() < maxSize) {
             available.push_back(fbo);
         } else {
-            // Don't reuse - delete it to avoid GPU resource leaks
             s_origDelFBO(1, &fbo);
         }
     }
@@ -67,26 +63,15 @@ struct FBOPool {
             if (fbo) available.push_back(fbo);
         }
     }
-
-    void reset() {
-        std::lock_guard<std::mutex> lk(mu);
-        // FIX: Delete all pooled FBOs before clearing
-        for (GLuint fbo : available) {
-            if (fbo != 0) {
-                s_origDelFBO(1, &fbo);
-            }
-        }
-        available.clear();
-    }
 };
 
 FBOPool* g_pool = nullptr;
-std::atomic<bool> g_active{false};
+bool g_active = false;
 
 } // namespace
 
 static void WINAPI hooked_glGenFramebuffers(GLsizei n, GLuint* ids) {
-    if (g_active.load() && n == 1) {
+    if (g_active && n == 1) {
         *ids = g_pool->acquire();
         return;
     }
@@ -94,7 +79,7 @@ static void WINAPI hooked_glGenFramebuffers(GLsizei n, GLuint* ids) {
 }
 
 static void WINAPI hooked_glDeleteFramebuffers(GLsizei n, const GLuint* ids) {
-    if (g_active.load() && n == 1) {
+    if (g_active && n == 1) {
         g_pool->release(*ids);
         return;
     }
@@ -120,26 +105,16 @@ namespace boost_fbo_cache {
         g_pool->maxSize = cfg.fbo_pool_size;
         g_pool->preallocate(cfg.fbo_pool_size);
 
-        g_active.store(true);
+        g_active = true;
         angle::log("fbo_cache: %d FBOs pre-allocated", cfg.fbo_pool_size);
     }
 
-    void* getGenHook() {
-        return g_active.load() ? (void*)hooked_glGenFramebuffers : nullptr;
-    }
-    void* getDelHook() {
-        return g_active.load() ? (void*)hooked_glDeleteFramebuffers : nullptr;
-    }
-
-    void reset() {
-        if (g_pool) g_pool->reset();
-    }
+    void* getGenHook() { return g_active ? (void*)hooked_glGenFramebuffers : nullptr; }
+    void* getDelHook() { return g_active ? (void*)hooked_glDeleteFramebuffers : nullptr; }
 
     void shutdown() {
-        g_active.store(false);
         if (g_pool) {
             angle::log("fbo_cache: hits=%d, misses=%d", g_pool->hits, g_pool->misses);
-            g_pool->reset();
             delete g_pool;
             g_pool = nullptr;
         }

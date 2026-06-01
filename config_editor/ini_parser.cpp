@@ -200,12 +200,3 @@ void Ini::set(const std::string& section, const std::string& key, const std::str
         m_lines.insert(m_lines.begin() + insertAt, fresh);
     }
 }
-
-void Ini::remove(const std::string& section, const std::string& key) {
-    m_lines.erase(
-        std::remove_if(m_lines.begin(), m_lines.end(), [&](const IniLine& ln) {
-            return ln.kind == IniLine::KeyValue && ieq(ln.section, section) && ieq(ln.key, key);
-        }),
-        m_lines.end()
-    );
-}

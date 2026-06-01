@@ -17,6 +17,7 @@ namespace angle {
 
         // function pointers we cache
         EGLDisplay_t (*eglGetPlatformDisplayEXT)(EGLint_t, void*, const EGLint_t*) = nullptr;
+        EGLDisplay_t (*eglGetPlatformDisplay)(EGLint_t, void*, const intptr_t*) = nullptr;
         EGLDisplay_t (*eglGetDisplay)(void*) = nullptr;
         EGLBoolean_t (*eglInitialize)(EGLDisplay_t, EGLint_t*, EGLint_t*) = nullptr;
         EGLBoolean_t (*eglChooseConfig)(EGLDisplay_t, const EGLint_t*, EGLConfig_t*, EGLint_t, EGLint_t*) = nullptr;
@@ -30,6 +31,7 @@ namespace angle {
         EGLBoolean_t (*eglTerminate)(EGLDisplay_t) = nullptr;
         void*        (*eglGetProcAddress)(const char*) = nullptr;
         EGLint_t     (*eglGetError)() = nullptr;
+        const char*  (*eglQueryString)(EGLDisplay_t, EGLint_t) = nullptr;
 
         EGLDisplay_t display = nullptr;
         bool         initialized = false;
@@ -39,6 +41,6 @@ namespace angle {
     void    shutdown();
     Loaded& state();
     void    log(const char* fmt, ...);
-    void    forceLog(const char* fmt, ...);   // always writes, ignores debug flag
+    void    setModuleHandle(HMODULE module);
 
 } // namespace angle

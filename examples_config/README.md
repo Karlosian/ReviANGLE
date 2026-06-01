@@ -13,24 +13,24 @@ Pre-tuned `angle_config.ini` files for different use cases. Copy one of them nex
 
 When to use: **first time installing**, on a hardware combo that hasn't been tested by the developer, or if any other config crashes.
 
-## `angle_config.best-for-low-pc.ini`
+## `angle_config.best-feel-gt630m.ini`
 
-Tuned for low-end / legacy hardware (e.g. older CPUs with entry-level graphics and limited RAM).
+Tuned for the developer's hardware: **Intel i5-3230M (Ivy Bridge, 2C/4T)** + **NVIDIA GT 630M (Kepler)** + **8 GB RAM** + **90 Hz display** + **Windows 10 22H2**.
 
 - All "safe" optimizations **on**.
-- Frame pacing **on** with `target=60` (or your monitor's refresh rate) — fits worst-case effects on low-end hardware.
+- Frame pacing **on** with `target=120` — 8.3 ms budget per frame, fits worst-case effects on this hardware.
 - Online features **blocked during gameplay** (`online_block_gameplay=true`) for stability.
-- A handful of "risky" tweaks **on** (`tex_compress`, `vbo_pool`, etc.) that are stable on most low-end hardware but may not be on yours.
+- A handful of "risky" tweaks **on** (`tex_compress`, `vbo_pool`, etc.) that are stable on the tested hardware but may not be on yours.
 
-When to use: older or weaker hardware (e.g., legacy laptop). Test on a known level you've played before; if you see new visual glitches, fall back to `default-safe`.
+When to use: similar hardware vintage (anything weak, ~2010-2014 era laptop). Test on a known level you've played before; if you see new visual glitches, fall back to `default-safe`.
 
 ## `angle_config.benchmark.ini`
 
-Same as `best-for-low-pc`, but:
+Same as `best-feel`, but:
 - `frame_pacing=false` — no FPS cap, see your true uncapped FPS.
 - `debug=true` — verbose log to `angle_log.txt` for measurement.
 
-When to use: **benchmarking**. Run a level a few times, check `angle_log.txt` for FPS counters, then go back to `best-for-low-pc` once you've found your worst-case FPS for picking `frame_pacing_target`.
+When to use: **benchmarking**. Run a level a few times, check `angle_log.txt` for FPS counters, then go back to `best-feel` once you've found your worst-case FPS for picking `frame_pacing_target`.
 
 ---
 
@@ -42,7 +42,7 @@ The single most-important config knob, and the one that needs personalization. S
 2. Play a few hard levels you know.
 3. Watch the FPS counter (or check `angle_log.txt` for `Drawelements per frame` lines).
 4. Find your **worst-case FPS during effects**. Call it `Wmin`.
-5. Switch to `default-safe.ini` or `best-for-low-pc.ini`.
+5. Switch to `default-safe.ini` or `best-feel-gt630m.ini`.
 6. Set `frame_pacing_target` to **0.85 × Wmin**, rounded to a sensible value (60 / 75 / 90 / 120).
 
 Examples:

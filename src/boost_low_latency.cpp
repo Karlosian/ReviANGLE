@@ -63,17 +63,6 @@ namespace boost_low_latency {
         intptr_t d3d11Dev = 0;
         if (!queryDevice((void*)eglDevice, 0x33A1, &d3d11Dev) || !d3d11Dev) return;
 
-        // Validate vtable before using (protects against bad device pointers)
-        {
-            void** vtblCheck = *(void***)d3d11Dev;
-            if (!vtblCheck) return;
-            uintptr_t qiAddr = (uintptr_t)vtblCheck[0];
-            if (qiAddr < 0x10000 || qiAddr > 0x7FFFFFFF0000) {
-                angle::log("low_latency: D3D11 device vtable looks invalid, skipping");
-                return;
-            }
-        }
-
         // QI for IDXGIDevice1
         struct VtblBase {
             HRESULT(STDMETHODCALLTYPE* QueryInterface)(void*, const GUID&, void**);

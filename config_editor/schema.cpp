@@ -10,29 +10,14 @@
 static const OptionDef g_opts[] = {
 
     // ────────── [ANGLE] ─────────────────────────────────────────────────────
-    { "ANGLE", "enabled", OptType::Bool, "true",
-      "Enable or disable the ReviANGLE mod entirely. If disabled, all OpenGL calls bypass "
-      "the DirectX translation layer and route directly to the system opengl32.dll.",
-      "Включить или полностью выключить мод ReviANGLE. Если выключен, игра работает "
-      "на стандартном OpenGL в обход трансляции DirectX.",
-      "ON" },
     { "ANGLE", "backend", OptType::Enum, "d3d11",
-      "[OLD PC] Use d3d11 — works everywhere including integrated GPUs. "
-      "[NEW PC] Use d3d11n for DX12 feature level support.",
-      "[СТАРЫЙ ПК] d3d11 — работает везде, включая интегрированные GPU. "
-      "[НОВЫЙ ПК] d3d11n — поддержка DX12 feature level.",
-      "ON", 0, 65535, "d3d11,d3d11n,d3d9" },
-    { "ANGLE", "frame_pacing", OptType::Bool, "true",
-      "[CRITICAL] QPC-based frame pacing with sleep+spin loop. Best for stability on any PC. "
-      "[OLD PC] 60 FPS. [NEW PC] 120-180 FPS.",
-      "[КРИТИЧНО] Frame pacing через QPC. Лучшая стабильность на любом ПК. "
-      "[СТАРЫЙ ПК] 60 FPS. [НОВЫЙ ПК] 120-180 FPS.",
-      "ON — best feel preset" },
-    { "ANGLE", "frame_pacing_target", OptType::Int, "180",
-      "[OLD PC] Recommended: 60 FPS. [NEW PC] 120-180 FPS (2x refresh on 90Hz).",
-      "[СТАРЫЙ ПК] Рекомендуется: 60 FPS. [НОВЫЙ ПК] 120-180 FPS.",
-      "180 — 2x refresh on 90 Hz",
-      0, 1000 },
+      "ANGLE renderer backend. d3d11 is the verified default; vulkan routes "
+      "OpenGL through ANGLE's Vulkan renderer; d3d9 remains a legacy fallback "
+      "for older GPUs / drivers.",
+      "Renderer backend ANGLE. d3d11 — проверенный default; vulkan ведет OpenGL "
+      "через Vulkan renderer ANGLE; d3d9 остается legacy fallback для старых "
+      "GPU/драйверов.",
+      "ON", 0, 65535, "d3d11,d3d9,vulkan" },
     { "ANGLE", "debug", OptType::Bool, "false",
       "Persistent debug log file. One fopen for the process lifetime — no "
       "per-call hitches. Default OFF for production; flip ON only when "
@@ -44,12 +29,6 @@ static const OptionDef g_opts[] = {
       "Path to the debug log file (relative to GD.exe).",
       "Путь к отладочному логу (относительно GD.exe).",
       "ON" },
-    { "ANGLE", "force_no_vsync", OptType::Bool, "false",
-      "[LOW LATENCY] Forces eglSwapInterval(0) + disables Windows Fullscreen Optimizations. "
-      "Required for sub-frame input latency. May cause tearing without adaptive sync monitor.",
-      "[LOW LATENCY] Принудительно отключает VSync и FSO Windows. Нужно для максимального "
-      "отклика. Может давать tearing без adaptive sync монитора.",
-      "OFF — enable for competitive play" },
 
     // ────────── [Boost] ─────────────────────────────────────────────────────
     { "Boost", "gpu_forcer", OptType::Bool, "true",
@@ -63,48 +42,55 @@ static const OptionDef g_opts[] = {
       "win on alloc-heavy frames, no risk.",
       "Заменяет стандартный аллокатор на lock-free пул. ~3-5% буст на "
       "frame-ах с аллокациями, без риска.",
-      "ON — 3-5% free win" },
+      "ON" },
     { "Boost", "timer_fix", OptType::Bool, "true",
-      "[ALL PC] timeBeginPeriod(1) — sub-millisecond Sleep granularity.",
-      "[ВСЕ ПК] Включает 1 ms точность Sleep для точного frame pacing.",
+      "timeBeginPeriod(1) — sub-millisecond Sleep granularity. Required for "
+      "precise frame pacing.",
+      "Включает 1 ms точность Sleep. Без этого пацер кадров теряет точность.",
       "ON" },
     { "Boost", "thread_boost", OptType::Bool, "true",
-      "ABOVE_NORMAL process priority + main thread HIGHEST. "
-      "Helps when background apps compete for CPU.",
+      "ABOVE_NORMAL process priority + main thread HIGHEST. Helps when other "
+      "apps fight for CPU.",
       "ABOVE_NORMAL приоритет процесса + HIGHEST для главного потока. "
       "Помогает когда фон жрёт CPU.",
       "ON" },
     { "Boost", "cpu_affinity", OptType::Hex, "0",
-      "[OLD PC] Keep 0 — let scheduler pick, manual pinning wastes cores. "
-      "[NEW PC] Can pin to specific cores (e.g. 0xF for 4 cores).",
-      "[СТАРЫЙ ПК] Ставь 0 — планировщик сам выберет. "
-      "[НОВЫЙ ПК] Можно привязать к конкретным ядрам (0xF для 4 ядер).",
-      "ON — auto mode" },
+      "CPU affinity mask in hex. 0 = let scheduler pick. With only 2 hardware "
+      "threads on Ivy Bridge, manual pinning is wasteful.",
+      "Маска CPU affinity (hex). 0 = автомат. На 2-поточном Ivy Bridge ручной "
+      "pin бесполезен.",
+      "ON" },
     { "Boost", "sse_math", OptType::Bool, "true",
-      "[ALL PC] SSE2 fast math intrinsics. Improves CPU vectorization. "
-      "Safe on all modern processors.",
-      "[ВСЕ ПК] Быстрые инструкции SSE2. Безопасно на всех современных CPU.",
+      "SSE2 fast math intrinsics. Ivy Bridge supports AVX, totally safe.",
+      "SSE2 fast-math инструкции. Ivy Bridge точно поддерживает.",
       "ON" },
     { "Boost", "power_boost", OptType::Bool, "true",
-      "[ALL PC] Disables Windows PROCESS_POWER_THROTTLING (EcoQoS). "
-      "Stops OS from downclocking GD.",
-      "[ВСЕ ПК] Отключает EcoQoS — Windows перестаёт даунклокать GD.",
+      "Disables Windows 10 PROCESS_POWER_THROTTLING (EcoQoS). Stops OS from "
+      "downclocking GD when it thinks the app is idle.",
+      "Отключает EcoQoS — операционка перестаёт даунклокать GD при "
+      "\"простое\". Стабилизирует FPS.",
       "ON" },
 
     // ────────── [BoostAdvanced] ─────────────────────────────────────────────
     { "BoostAdvanced", "tex_compress", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — breaks rendering on FL9 path. "
-      "[NEW PC] Can enable — BC7/ASTC compression saves VRAM.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — ломает текстуры на FL9. "
-      "[НОВЫЙ ПК] Можно включить — BC7/ASTC экономят VRAM.",
+      "On-the-fly RGBA8 → DXT1 compression (4× less VRAM). Breaks rendering "
+      "on ANGLE FL9 path — keep OFF on this hardware.",
+      "Сжатие RGBA8 → DXT1 на лету (4× меньше VRAM). Ломает рендер на "
+      "FL9-пути ANGLE — НЕ ВКЛЮЧАЙ.",
       "OFF — breaks textures on FL9 path" },
     { "BoostAdvanced", "nvapi_profile", OptType::Bool, "true",
-      "[ALL PC] NVAPI driver profile — signals max perf to NVIDIA driver.",
-      "[ВСЕ ПК] NVAPI профиль — включает max-perf режим NVIDIA драйвера.",
+      "NVAPI driver profile init — signals \"heavy GPU app, give me max perf\". "
+      "Now correctly loads nvapi64.dll on x64 and uses void* return type "
+      "(was sign-extending int → DEP crash).",
+      "Инициализирует NVAPI чтобы драйвер включил max-perf профиль. "
+      "Чинено: грузит nvapi64.dll на x64 и возвращает void* (раньше int → "
+      "truncation → DEP).",
       "ON — verified initialized" },
     { "BoostAdvanced", "shader_cache", OptType::Bool, "true",
-      "[ALL PC] Saves compiled HLSL to disk. Big win on slow CPU.",
-      "[ВСЕ ПК] Кеширует HLSL на диске. Большой плюс на слабом CPU.",
+      "Saves compiled HLSL bytecode to disk. Big win on slow CPU — 2nd launch "
+      "skips shader compilation stalls.",
+      "Кеширует HLSL-байткод между запусками. Большой плюс на слабом CPU — "
+      "со 2-го запуска нет stutter-ов от компиляции.",
       "ON" },
     { "BoostAdvanced", "shader_cache_dir", OptType::String, "shader_cache",
       "Folder for the shader cache (relative to GD.exe).",
@@ -123,11 +109,11 @@ static const OptionDef g_opts[] = {
       "Экономит обращения к драйверу.",
       "ON" },
     { "BoostAdvanced", "working_set_prefetch", OptType::Bool, "false",
-      "Pre-faults GD code pages into RAM. OFF — can cause initialization latency on "
-      "certain storage configurations.",
-      "Принудительно загружает страницы кода игры в RAM при старте. ВЫКЛ — может "
-      "вызывать задержки инициализации на некоторых конфигурациях дисков.",
-      "OFF" },
+      "Pre-faults GD code pages into RAM. OFF — caused init stalls on this "
+      "hardware.",
+      "Префолтит страницы кода GD. ВЫКЛ — на этом железе вызывает "
+      "задержки при старте.",
+      "OFF — causes init stalls" },
     { "BoostAdvanced", "fmod_tuning", OptType::Bool, "false",
       "FMOD audio engine tuning. OFF — IAT hook on FMOD crashes some builds.",
       "Тюнинг FMOD. ВЫКЛ — IAT hook на FMOD иногда крашит игру.",
@@ -138,22 +124,28 @@ static const OptionDef g_opts[] = {
       "OFF — fmod_tuning is off",
       8000, 96000 },
     { "BoostAdvanced", "async_asset_loader", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — parallel threads steal CPU from main loop. "
-      "[NEW PC] Enable for faster level loading (4 threads recommended).",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — параллельные потоки отнимают CPU у главного потока. "
-      "[НОВЫЙ ПК] Включить для быстрой загрузки уровней (4 потока).",
-      "OFF" },
+      "Parallel asset loader (separate threadpool). OFF — only 2 hardware "
+      "threads available, workers would starve the main loop.",
+      "Параллельная загрузка ассетов. ВЫКЛ — у тебя 2 hw-потока, "
+      "воркеры голодят главный цикл.",
+      "OFF — only 2 CPU threads" },
     { "BoostAdvanced", "async_loader_threads", OptType::Int, "2",
-      "[OLD PC] Use 0 (disabled). [NEW PC] Use 4 for parallel loading.",
-      "[СТАРЫЙ ПК] 0 (выключено). [НОВЫЙ ПК] 4 для параллельной загрузки.",
+      "Number of worker threads when async_asset_loader=true.",
+      "Количество worker-потоков для async_asset_loader.",
       "OFF — async loader off",
-      0, 16 },
-    { "BoostAdvanced", "precise_sleep", OptType::Bool, "true",
-      "Replaces Sleep() with high-resolution spin-wait for ≤2 ms. Reduces jitter "
-      "but increases CPU usage on the main thread.",
-      "Заменяет Sleep() на точный высокоточный spin-wait для интервалов ≤2 ms. "
-      "Снижает задержки и микрофризы планировщика за счет загрузки ядра CPU.",
+      1, 16 },
+    { "BoostAdvanced", "force_no_vsync", OptType::Bool, "true",
+      "eglSwapInterval(0) — disables VSync at EGL level. Combined with "
+      "unlock_fps_cap lets GPU run as fast as possible.",
+      "eglSwapInterval(0) — отключает VSync на уровне EGL. Вместе с "
+      "unlock_fps_cap позволяет GPU выдать максимум.",
       "ON" },
+    { "BoostAdvanced", "precise_sleep", OptType::Bool, "true",
+      "Replaces Sleep() with high-resolution spin-wait for ≤2 ms. IAT hook "
+      "target wasn't found on your build (logged as failed) — harmless.",
+      "Заменяет Sleep() на точный spin-wait. IAT hook не нашёл цель на "
+      "этой сборке (видно в логе) — но включить безопасно.",
+      "ON — IAT hook target not found, harmless" },
     { "BoostAdvanced", "heap_compact_interval", OptType::Int, "0",
       "Periodic HeapCompact() interval in seconds. 0 = disabled. Heap compact "
       "during gameplay causes 50-200 ms stutter — keep 0.",
@@ -162,10 +154,10 @@ static const OptionDef g_opts[] = {
       "0 = disabled",
       0, 600 },
     { "BoostAdvanced", "d3d11_multithread", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — conflicts with ANGLE threading. "
-      "[NEW PC] Can enable — uses all GPU cores.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — конфликтует с threading-ом ANGLE. "
-      "[НОВЫЙ ПК] Можно включить — использует все ядра GPU.",
+      "ID3D11Multithread::SetMultithreadProtected. OFF — gated by backend; on "
+      "D3D11 ANGLE manages threading itself, this conflicts.",
+      "D3D11 multithread protection. ВЫКЛ — конфликтует с собственным "
+      "threading-ом ANGLE на D3D11.",
       "OFF — ANGLE conflict" },
 
     // ────────── [BoostRender] ───────────────────────────────────────────────
@@ -176,10 +168,10 @@ static const OptionDef g_opts[] = {
       "порядка триггеров.",
       "OFF — breaks triggers" },
     { "BoostRender", "mipmap_off", OptType::Bool, "true",
-      "[OLD PC] Enable — saves 30-50% VRAM/bandwidth on weak GPUs. "
-      "[NEW PC] Can disable for better texture quality.",
-      "[СТАРЫЙ ПК] Включить — экономит 30-50% VRAM. "
-      "[НОВЫЙ ПК] Можно выключить для лучшего качества текстур.",
+      "Skips mipmap generation. Big VRAM/bandwidth save on weak/integrated "
+      "GPUs. GD doesn't sample at distance, so no quality loss.",
+      "Пропускает генерацию mipmap. Большая экономия VRAM/полосы на "
+      "слабых/интегрированных GPU. Потери качества нет.",
       "ON — big win on weak GPUs" },
     { "BoostRender", "noop_finish", OptType::Bool, "true",
       "glFinish() → no-op. cocos2d sometimes calls Finish after frame which "
@@ -188,18 +180,19 @@ static const OptionDef g_opts[] = {
       "кадра, это блокирует пайплайн. Безопасно.",
       "ON" },
     { "BoostRender", "noop_geterror", OptType::Bool, "true",
-      "glGetError() → GL_NO_ERROR. Saves driver round-trip.",
-      "glGetError() всегда GL_NO_ERROR. Экономит обращение к драйверу.",
+      "glGetError() → GL_NO_ERROR. Saves driver round-trip. Safe with "
+      "gl_no_error context.",
+      "glGetError() всегда GL_NO_ERROR. Экономит обращение к драйверу. "
+      "Безопасно в паре с gl_no_error.",
       "ON" },
     { "BoostRender", "vbo_pool", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — conflicts with cocos2d batcher, causes jitter. "
-      "[NEW PC] Can enable — VBO cache speeds up repeated objects.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — конфликтует с батчером cocos2d, создаёт jitter. "
-      "[НОВЫЙ ПК] Можно включить — кэш VBO ускоряет повторные объекты.",
+      "Persistent VBO pool. OFF — cocos2d's batcher manages VBOs itself, "
+      "overlap causes jitter.",
+      "Пул VBO. ВЫКЛ — cocos2d сам управляет VBO, наш пул создаёт jitter.",
       "OFF — conflicts with cocos2d batcher" },
     { "BoostRender", "vbo_pool_size_mb", OptType::Int, "16",
-      "[OLD PC] 16 MB. [NEW PC] 64-128 MB for better caching.",
-      "[СТАРЫЙ ПК] 16 MB. [НОВЫЙ ПК] 64-128 MB для лучшего кэша.",
+      "VBO pool size in MB when vbo_pool=true.",
+      "Размер VBO-пула в MB когда vbo_pool=true.",
       "OFF — vbo_pool off",
       4, 256 },
     { "BoostRender", "vertex_compress", OptType::Bool, "false",
@@ -228,17 +221,17 @@ static const OptionDef g_opts[] = {
 
     // ────────── [BoostIO] ───────────────────────────────────────────────────
     { "BoostIO", "fast_io", OptType::Bool, "true",
-      "Intercepts CreateFile calls to add FILE_FLAG_SEQUENTIAL_SCAN for optimized "
-      "sequential asset reading.",
-      "Перехватывает вызовы CreateFile и добавляет флаг FILE_FLAG_SEQUENTIAL_SCAN "
-      "для оптимизации последовательного чтения ассетов с диска.",
-      "ON" },
+      "CreateFile with FILE_FLAG_SEQUENTIAL_SCAN. IAT hook target wasn't "
+      "found on this build — harmless when missing.",
+      "CreateFile с FILE_FLAG_SEQUENTIAL_SCAN. IAT hook не нашёл цель на "
+      "этой сборке — безопасно.",
+      "ON — IAT hook target not found, harmless" },
     { "BoostIO", "ramdisk_cache", OptType::Bool, "false",
-      "Copies Resources/ directory contents directly into RAM memory. Requires "
-      "approximately 500 MB of free memory.",
-      "Копирует все ресурсы (Resources/) в оперативную память. Требует около "
-      "500 МБ свободной RAM для размещения кэша.",
-      "OFF" },
+      "Copy Resources/ to RAM-backed temp. OFF — needs ~500 MB free RAM; "
+      "you have 8 GB total which is tight.",
+      "Копирует Resources/ в RAM. ВЫКЛ — нужно ~500 MB свободной RAM, "
+      "у тебя 8 GB всего, это тесно.",
+      "OFF — RAM-tight on 8 GB" },
     { "BoostIO", "ramdisk_path", OptType::String, "",
       "Custom path for ramdisk cache. Empty = auto.",
       "Свой путь для ramdisk-кеша. Пустой = авто.",
@@ -249,25 +242,6 @@ static const OptionDef g_opts[] = {
       "Кеш GetProcAddress / wglGetProcAddress. Большой плюс — cocos2d "
       "ре-резолвит одни и те же процы каждый кадр.",
       "ON" },
-
-    // ── v1.0.4: IOCP-based asset prewarmer ──
-    { "BoostIO", "iocp_loader", OptType::Bool, "false",
-      "Overlapped I/O + Completion Port asset prewarmer. ~2× faster than "
-      "the legacy thread-pool reader on NVMe; auto-falls-back to single-"
-      "concurrency on rotational disks (no head thrashing). Read-only — "
-      "doesn't risk save corruption. Disable if async_asset_loader is on.",
-      "Прогрев файлового кэша через IOCP + Overlapped I/O. На NVMe в ~2× "
-      "быстрее старого thread-pool. На HDD автоматически концаррент=1 — "
-      "никакого head ping-pong. Read-only — сейвы не страдают. Конфликтует "
-      "с async_asset_loader (включай что-то одно).",
-      "OFF — opt-in" },
-    { "BoostIO", "iocp_loader_concurrency", OptType::Int, "0",
-      "Number of concurrent IOCP read operations. 0 = auto-detect (1 on HDD, "
-      "4 on SSD/NVMe). Manual range: 1..8.",
-      "Количество параллельных IOCP-читалок. 0 = автодетект (1 на HDD, "
-      "4 на SSD/NVMe). Ручной диапазон: 1..8.",
-      "0 = auto",
-      0, 8 },
 
     // ────────── [BoostCPU] ──────────────────────────────────────────────────
     { "BoostCPU", "sse_memcpy", OptType::Bool, "false",
@@ -312,12 +286,12 @@ static const OptionDef g_opts[] = {
       "Регистрирует GD в Windows Game Mode — Windows вырубает фоновые "
       "сервисы.",
       "ON" },
-    { "BoostSystem", "smart_cpu_pin", OptType::Bool, "false",
-      "Pin main thread to performance cores on hybrid CPUs (Intel 12th gen and newer). "
-      "Safe to leave enabled on older non-hybrid processors.",
-      "Привязывает главный поток к производительным P-ядрам на гибридных процессорах. "
-      "Безопасно оставлять включенным на старых архитектурах.",
-      "ON — no-op on legacy CPUs" },
+    { "BoostSystem", "smart_cpu_pin", OptType::Bool, "true",
+      "Pin main thread to P-cores on hybrid CPUs (Intel 12gen+). Ivy Bridge "
+      "isn't hybrid — module is a no-op, safe to leave on.",
+      "Пиннит главный поток на P-ядра на hybrid CPU (12gen+). Ivy Bridge "
+      "не hybrid — no-op, безопасно держать.",
+      "ON — no-op on Ivy Bridge" },
     { "BoostSystem", "mitigation_off", OptType::Bool, "false",
       "Disables Windows process mitigations (CFG, CET, strict ASLR). OFF — "
       "~1-2% gain not worth the security trade-off.",
@@ -340,13 +314,30 @@ static const OptionDef g_opts[] = {
       "DXGI waitable swap chain — ждёт на handle вместо блокировки в "
       "Present(). Гейчён по backend==d3d11.",
       "ON — D3D11 only" },
+    { "BoostLatency", "frame_pacing", OptType::Bool, "true",
+      "QPC-based frame pacing with sleep+spin loop. ON by default — paired "
+      "with target=180 it gives the best gameplay feel: lowest input lag, "
+      "smooth motion, no tearing. Set false only for raw FPS benchmarking.",
+      "Frame pacing через QPC с sleep+spin. ВКЛ по умолчанию — в паре с "
+      "target=180 даёт лучшее ощущение: минимальный input lag, "
+      "плавность, без tearing-а. ВЫКЛ только для бенчмарка max FPS.",
+      "ON — best feel preset" },
+    { "BoostLatency", "frame_pacing_target", OptType::Int, "180",
+      "Target FPS for QPC pacing. 180 = 2× refresh on a 90 Hz monitor — "
+      "the lowest-input-lag sweet spot. Set 0 for auto-detect (matches "
+      "refresh exactly), or 60/90 for VSync-style smoothness.",
+      "Целевой FPS пацера. 180 = 2× refresh на 90 Hz мониторе — лучший "
+      "баланс input lag. 0 = автоопределение (ровно по refresh), "
+      "60/90 = плавность VSync-стиля.",
+      "180 — 2× refresh on 90 Hz",
+      0, 1000 },
     { "BoostLatency", "mmcss_pro_audio", OptType::Bool, "true",
       "Registers main thread as MMCSS Pro Audio class — gets 1 ms scheduling "
       "granularity (default is 15.6 ms quantum).",
       "Регистрирует главный поток как MMCSS Pro Audio — получает 1 ms "
       "гранулярность планирования (вместо 15.6 ms).",
       "ON" },
-    { "BoostLatency", "shader_warmup", OptType::Bool, "true",
+    { "BoostLatency", "shader_warmup", OptType::Bool, "false",
       "Pre-compile common shaders at init. OFF — can crash on shader "
       "compile errors; shader_cache covers warmup anyway.",
       "Предкомпиляция шейдеров при старте. ВЫКЛ — может падать; кеш на "
@@ -360,27 +351,23 @@ static const OptionDef g_opts[] = {
       "~2 кадра. Чинено: slot 12 (раньше 11 = GetGPUThreadPriority, "
       "крашило).",
       "ON — verified MaxFrameLatency=1" },
+    { "BoostLatency", "gl_no_error", OptType::Bool, "true",
+      "EGL_CONTEXT_OPENGL_NO_ERROR_KHR — disables ANGLE per-call validation. "
+      "~10-20% CPU saving on weak Ivy Bridge.",
+      "Контекст без валидации параметров GL. ~10-20% экономии CPU на "
+      "слабом Ivy Bridge.",
+      "ON — big win on weak CPU" },
+    { "BoostLatency", "unlock_fps_cap", OptType::Bool, "true",
+      "Hooks CCApplication::setAnimationInterval to remove cocos2d FPS cap "
+      "(sets 1/1000 = 1 ms). Re-applied every second.",
+      "Хукает CCApplication::setAnimationInterval чтобы убрать cocos2d "
+      "FPS-cap (1/1000 = 1 ms). Переприменяется каждую секунду.",
+      "ON" },
     { "BoostLatency", "anti_stutter", OptType::Bool, "true",
       "Disables Windows process affinity auto-update + EcoQoS thread "
-      "throttling. Eliminates 0.5-2 ms hitches from core migration. "
-      "Now also sets HIGH_PRIORITY_CLASS + TIME_CRITICAL for main thread.",
+      "throttling. Eliminates 0.5-2 ms hitches from core migration.",
       "Отключает автообновление affinity + EcoQoS-троттлинг потока. "
-      "Убирает hitch-и 0.5-2 ms. Теперь также ставит HIGH_PRIORITY_CLASS + "
-      "TIME_CRITICAL на главный поток.",
-      "ON" },
-
-    // ── v1.0.4: DXGI/DWM low-latency present hints ──
-    { "BoostLatency", "present_hints", OptType::Bool, "true",
-      "DXGI / DWM low-latency present hints. DwmEnableMMCSS lets the "
-      "compositor schedule under MMCSS (lower jitter on Win7/8). On "
-      "Win10 1607+ also calls IDXGIDevice4::SetMaximumFrameLatency(1) "
-      "as a defence-in-depth duplicate of low_latency. Pure perf, no "
-      "visual change — safe everywhere.",
-      "Хинты DXGI / DWM для уменьшения задержки кадра. DwmEnableMMCSS — "
-      "композитор переходит под MMCSS-планировщик (меньше jitter на "
-      "Win7/8). На Win10 1607+ дополнительно вызывает "
-      "IDXGIDevice4::SetMaximumFrameLatency(1) — дублирует low_latency, "
-      "защищая от device-lost. Никаких визуальных изменений.",
+      "Убирает hitch-и 0.5-2 ms от миграции между ядрами.",
       "ON" },
 
     // ────────── [BoostGD] ───────────────────────────────────────────────────
@@ -421,16 +408,16 @@ static const OptionDef g_opts[] = {
       "на нормальных уровнях.",
       "OFF — visual glitches" },
     { "BoostGD", "level_predecode", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — competes with main thread for CPU. "
-      "[NEW PC] Enable for faster level loading (4 threads recommended).",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — конкурирует за CPU с главным потоком. "
-      "[НОВЫЙ ПК] Включить для быстрой загрузки уровней (4 потока).",
-      "OFF" },
+      "Pre-decode level on load (separate threads). OFF — only 2 CPU "
+      "threads, race with GD's own decoder.",
+      "Предекодирование уровня. ВЫКЛ — у тебя 2 CPU-потока, конкурирует "
+      "с декодером GD.",
+      "OFF — only 2 CPU threads" },
     { "BoostGD", "predecode_threads", OptType::Int, "2",
-      "[OLD PC] Use 0 (disabled). [NEW PC] Use 4 for parallel loading.",
-      "[СТАРЫЙ ПК] 0 (выключено). [НОВЫЙ ПК] 4 для параллельной загрузки.",
+      "Number of decoder threads when level_predecode=true.",
+      "Количество decoder-потоков для level_predecode.",
       "OFF — level_predecode off",
-      0, 8 },
+      1, 8 },
 
     // ────────── [BoostRenderAdv] ────────────────────────────────────────────
     { "BoostRenderAdv", "atlas_merge", OptType::Bool, "false",
@@ -480,16 +467,16 @@ static const OptionDef g_opts[] = {
 
     // ────────── [BoostCocos] ────────────────────────────────────────────────
     { "BoostCocos", "particle_throttle", OptType::Bool, "false",
-      "[OLD PC] Enable — limits particles to ~30 for performance. "
-      "[NEW PC] Can disable — GPU handles it fine.",
-      "[СТАРЫЙ ПК] Включить — лимит ~30 частиц для производительности. "
-      "[НОВЫЙ ПК] Можно выключить — GPU справится.",
+      "Limit max active particles. Visual change — your call. Set "
+      "particle_max=150 if your level chokes.",
+      "Лимит активных частиц. Визуальное изменение, решай сам. "
+      "Поставь particle_max=150 если уровень захлёбывается.",
       "OFF by default — visual choice" },
     { "BoostCocos", "particle_max", OptType::Int, "300",
-      "[OLD PC] Use 30. [NEW PC] Use 0 (unlimited).",
-      "[СТАРЫЙ ПК] 30. [НОВЫЙ ПК] 0 (без лимита).",
+      "Max simultaneous particles when particle_throttle=true.",
+      "Макс одновременных частиц при particle_throttle=true.",
       "OFF — particle_throttle off",
-      0, 5000 },
+      50, 5000 },
     { "BoostCocos", "texcache_preload", OptType::Bool, "false",
       "Pre-warm texture cache at startup. OFF — slows first launch by "
       "~3 s, no measurable in-game gain.",
@@ -557,20 +544,19 @@ static const OptionDef g_opts[] = {
 
     // ────────── [BoostPipeline] (all OFF — hot-path jitter) ────────────────
     { "BoostPipeline", "pipe_drawsort", OptType::Bool, "false",
-      "Sort draw calls by state. OFF — hot path, jitter risk on slow CPUs.",
-      "Сортировка draw-вызовов по состоянию. ВЫКЛ — hot path, риск jitter на слабых CPU.",
-      "OFF" },
+      "Pipeline-level drawcall sort. OFF — hot-path hook = jitter on "
+      "2-core CPU.",
+      "Pipeline-сортировка draw. ВЫКЛ — hook hot-path = jitter на "
+      "2-ядре.",
+      "OFF — jitter on 2-core CPU" },
     { "BoostPipeline", "scissor_tight", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — adds CPU overhead, can clip sprites. "
-      "[NEW PC] Can enable — tight scissor optimization.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — добавляет CPU overhead, может обрезать спрайты. "
-      "[НОВЫЙ ПК] Можно включить — оптимизация tight scissor.",
+      "Tighter scissor rectangles. OFF — can clip sprites at edges.",
+      "Тесные scissor-прямоугольники. ВЫКЛ — может обрезать спрайты "
+      "у краёв.",
       "OFF — can clip sprites" },
     { "BoostPipeline", "vertex_dedup", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — hot path, jitter source. "
-      "[NEW PC] Can enable — dedup identical vertices.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — hot path, источник jitter. "
-      "[НОВЫЙ ПК] Можно включить — дедупликация одинаковых вершин.",
+      "Dedup identical vertices in batches. OFF — hot path, jitter source.",
+      "Дедупликация одинаковых вершин в batch. ВЫКЛ — hot path, jitter.",
       "OFF — hot-path jitter" },
     { "BoostPipeline", "halfres_effects", OptType::Bool, "false",
       "Render post-effects at half resolution. OFF — blurry visuals.",
@@ -581,59 +567,11 @@ static const OptionDef g_opts[] = {
       "Патч шейдеров на упрощённые варианты. ВЫКЛ — рискованно.",
       "OFF — risky shader rewriting" },
     { "BoostPipeline", "batch_coalesce", OptType::Bool, "false",
-      "Combines small drawing batches together. Intercepting this hot path can "
-      "introduce frame pacing instability on low-end CPUs.",
-      "Объединяет небольшие батчи отрисовки в более крупные. Перехват этого горячего пути "
-      "может вызвать нестабильность времени кадра на слабых процессорах.",
-      "OFF" },
-
-    // ── v1.0.4: adaptive effect LOD + static buffer cache ──
-    { "BoostPipeline", "effect_lod", OptType::Bool, "true",
-      "[ALL PC] Adaptive LOD for particles. When FPS drops, throttles only "
-      "mass-particle batches. Player icon, ground, UI are NEVER touched. "
-      "[OLD PC] Enable with effect_lod_min_fps=45. "
-      "[NEW PC] Enable with effect_lod_min_fps=30.",
-      "[ВСЕ ПК] Адаптивный LOD для частиц. Режет только mass-particle батчи. "
-      "Иконка, ground, UI — НИКОГДА не трогаются. "
-      "[СТАРЫЙ ПК] Включить с effect_lod_min_fps=45. "
-      "[НОВЫЙ ПК] Включить с effect_lod_min_fps=30.",
-      "ON — никогда не портит картинку" },
-    { "BoostPipeline", "effect_lod_min_fps", OptType::Int, "0",
-      "[OLD PC] Use 45 (activate earlier). "
-      "[NEW PC] Use 30 (more headroom).",
-      "[СТАРЫЙ ПК] 45 (активировать раньше). "
-      "[НОВЫЙ ПК] 30 (больше запаса).",
-      "0 = auto",
-      0, 1000 },
-    { "BoostPipeline", "static_batch", OptType::Bool, "false",
-      "Static Buffer Cache. Hashes glBufferData uploads and skips "
-      "identical re-uploads (cocos2d does this for ground / background "
-      "every frame). Off by default: extremely rare hash collisions "
-      "(< 2^-64 probability per upload) could replay 1 stale frame — "
-      "invisible at 60+ FPS, technically possible.",
-      "Кэш статичных VBO uploads. Хэширует glBufferData и пропускает "
-      "идентичные перезаливки (cocos2d делает это для ground / "
-      "background каждый кадр). ВЫКЛ по умолчанию: микроскопический "
-      "шанс хэш-коллизии (< 2^-64) может дать 1 устаревший кадр — "
-      "глазом не заметно, но теоретически возможно.",
-      "OFF — opt-in" },
-
-    // ── v1.0.5: draw call budget ──
-    { "BoostPipeline", "drawcall_budget", OptType::Bool, "false",
-      "[NEW PC] Guarantees minimum FPS by skipping decorative draw calls "
-      "(particles GL_POINTS, small GL_TRIANGLE < 12 verts). "
-      "Never skips: player icon, ground, tiles, UI.",
-      "[НОВЫЙ ПК] Гарантирует мин. FPS пропуском декоративных draw-call-ов "
-      "(GL_POINTS, мелкие GL_TRIANGLE < 12 вершин). "
-      "Не пропускает: иконка, ground, tiles, UI.",
-      "OFF — NEW PC recommended" },
-    { "BoostPipeline", "drawcall_budget_min_fps", OptType::Int, "28",
-      "Minimum FPS target for draw call budget. 28 = safe minimum. "
-      "Higher = better quality but less headroom.",
-      "Мин. целевой FPS. 28 = безопасно для слабых ПК. "
-      "Больше = лучше качество, меньше запас.",
-      "28 — safe minimum",
-      15, 240 },
+      "Coalesce small draw batches. OFF — hot-path hook, jitter on "
+      "2-core CPU.",
+      "Объединение мелких batch-ей. ВЫКЛ — hook hot-path, jitter на "
+      "2-ядре.",
+      "OFF — jitter on 2-core CPU" },
 
     // ────────── [BoostNetwork] ──────────────────────────────────────────────
     { "BoostNetwork", "dns_prefetch", OptType::Bool, "true",
@@ -664,34 +602,26 @@ static const OptionDef g_opts[] = {
 
     // ────────── [BoostAudio] ────────────────────────────────────────────────
     { "BoostAudio", "fmod_channel_limit", OptType::Bool, "false",
-      "[OLD PC] Enable — limit to 16 channels, saves CPU. "
-      "[NEW PC] Can disable — full 32 channels for best audio.",
-      "[СТАРЫЙ ПК] Включить — лимит 16 каналов, экономит CPU. "
-      "[НОВЫЙ ПК] Можно выключить — полные 32 канала для лучшего звука.",
+      "Limit FMOD active channels. OFF — can mute legitimate SFX.",
+      "Лимит активных FMOD-каналов. ВЫКЛ — может глушить нужные SFX.",
       "OFF — risk muting SFX" },
     { "BoostAudio", "fmod_max_channels", OptType::Int, "16",
-      "[OLD PC] 16. [NEW PC] 32.",
-      "[СТАРЫЙ ПК] 16. [НОВЫЙ ПК] 32.",
+      "Max FMOD channels when fmod_channel_limit=true.",
+      "Макс FMOD-каналов при fmod_channel_limit=true.",
       "OFF — fmod_channel_limit off",
       4, 64 },
     { "BoostAudio", "fmod_software_mix", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — keeps GPU audio offload. "
-      "[NEW PC] Can enable — better audio quality.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — сохраняет GPU audio offload. "
-      "[НОВЫЙ ПК] Можно включить — лучшее качество звука.",
+      "Force FMOD software mixing. OFF — loses GPU audio offload.",
+      "Софтверный микс FMOD. ВЫКЛ — теряем GPU audio offload.",
       "OFF — loses GPU audio offload" },
     { "BoostAudio", "audio_thread_pin", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — binding can starve main thread. "
-      "[NEW PC] Can enable — stable audio on dedicated cores.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — привязка может замедлить главный поток. "
-      "[НОВЫЙ ПК] Можно включить — стабильный звук на выделенных ядрах.",
-      "OFF" },
+      "Pin FMOD thread to dedicated core. OFF — on 2-core CPU starves main.",
+      "Pin FMOD-потока на ядро. ВЫКЛ — на 2-ядерном CPU голодит main.",
+      "OFF — only 2 cores" },
     { "BoostAudio", "sound_preload", OptType::Bool, "false",
-      "[OLD PC] Keep OFF — uses 500MB+ RAM. "
-      "[NEW PC] Can enable — faster sound loading.",
-      "[СТАРЫЙ ПК] ВЫКЛЮЧИТЬ — жрёт 500MB+ RAM. "
-      "[НОВЫЙ ПК] Можно включить — быстрая загрузка звуков.",
-      "OFF" },
+      "Preload all .mp3/.ogg files. OFF — eats RAM (8 GB total is tight).",
+      "Предзагрузка всех .mp3/.ogg. ВЫКЛ — жрёт RAM (всего 8 GB).",
+      "OFF — RAM-tight" },
     { "BoostAudio", "audio_ram_compress", OptType::Bool, "false",
       "RAM compression of audio buffers. OFF — adds CPU cost, marginal "
       "gain.",
@@ -715,10 +645,9 @@ static const OptionDef g_opts[] = {
       "интернета\".",
       "ON" },
     { "BoostExtreme", "numa_aware", OptType::Bool, "true",
-      "NUMA-aware memory allocation. Optimizes multi-socket or multi-die CPU memory routing. "
-      "Safe to keep enabled on standard systems.",
-      "Выделение памяти с учетом архитектуры NUMA. Оптимизирует работу с памятью "
-      "на многопроцессорных системах.",
+      "NUMA-aware memory allocation. Single NUMA node on Ivy Bridge "
+      "laptop — module is a no-op.",
+      "NUMA-aware аллокация. На Ivy Bridge один NUMA-узел — no-op.",
       "ON — no-op on single-NUMA" },
     { "BoostExtreme", "huge_pages", OptType::Bool, "false",
       "Use 2 MB large pages. OFF — needs SeLockMemoryPrivilege (admin).",
@@ -757,44 +686,20 @@ static const OptionDef g_opts[] = {
       "пауза, диалог). Не больше 4 подряд — чтобы input lag оставался "
       "ограниченным. Экономит мощность GPU на идле — куллер не разгоняется "
       "пока открыто меню.",
-      "OFF" },
+      "OFF — opt-in (test on your hardware first)" },
 
     { "BoostExtreme", "halfres_render", OptType::Bool, "false",
       "Render the entire game at half resolution (W/2 × H/2) into an "
-      "offscreen FBO, then upscale to the real backbuffer on Present. "
-      "Trades visible quality (UI text becomes blurrier/pixelated) for "
-      "~30-50% less fragment shading work. Big win on fillrate-bound GPUs.",
+      "offscreen FBO, then upscale to the real backbuffer via "
+      "glBlitFramebuffer with GL_LINEAR filter on Present. Trades visible "
+      "quality (UI text becomes blurrier) for ~30-50% less fragment "
+      "shading work. Big win on weak GPUs (GT 630M-class fillrate-bound).",
       "Рендер всей игры в половинном разрешении (W/2 × H/2) в offscreen "
-      "FBO, апскейл до реального backbuffer на Present. Жертвуешь качеством "
-      "(UI текст блюрнее/пиксельнее) ради ~30-50% меньше работы по фрагмент-шейдингу. "
-      "Огромный выигрыш на слабых видеокартах с низкой скоростью заполнения.",
+      "FBO, апскейл до реального backbuffer через glBlitFramebuffer с "
+      "линейной фильтрацией на Present. Жертвуешь качеством (UI текст "
+      "блюрнее) ради ~30-50% меньше работы по фрагмент-шейдингу. Огромный "
+      "выигрыш на слабых GPU (типа GT 630M, fillrate-bound).",
       "OFF — opt-in (visible quality drop)" },
-
-    { "BoostExtreme", "halfres_filter", OptType::Enum, "nearest",
-      "Scaling filter used when upscaling the half-resolution FBO to the screen. "
-      "nearest provides sharp pixel art/text with no blur (highly recommended); "
-      "linear provides standard bilinear filtering which blurs the image slightly.",
-      "Фильтр масштабирования при апскейле кадра 1/2 разрешения. "
-      "nearest дает четкие пиксели без мыла (рекомендуется); "
-      "linear сглаживает картинку, делая ее немного размытой.",
-      "nearest", 0, 0, "nearest,linear" },
-
-    // ── v1.0.4: per-thread EcoQoS opt-out for ALL threads ──
-    { "BoostExtreme", "thread_qos", OptType::Bool, "true",
-      "Process-wide thread QoS hardening. Walks every existing thread "
-      "of GD via Toolhelp32 snapshot and explicitly disables Windows "
-      "EcoQoS / Power Throttling. Fixes audio dropouts and FPS jitter "
-      "on Win11 laptops where audio mixer / asset loader threads got "
-      "auto-classified as 'background' and down-clocked. Costs ~5-10 % "
-      "more battery on idle, none in gameplay.",
-      "Процесс-широкое выключение EcoQoS для КАЖДОГО потока. Проходит "
-      "по snapshot-у потоков GD через Toolhelp32 и явно отключает "
-      "Windows EcoQoS / Power Throttling на каждом. Чинит проседания "
-      "звука и FPS-jitter на ноутбуках Win11, где audio-mixer и asset-"
-      "loader потоки ошибочно классифицировались как 'background' и "
-      "тротлились. На батарее +5-10 % к расходу в idle, в игре — 0.",
-      "ON" },
-
 };
 
 const std::vector<OptionDef>& schemaAll() {
@@ -822,298 +727,4 @@ const std::vector<std::string>& schemaSections() {
         "BoostExtreme",
     };
     return v;
-}
-
-const char* getFriendlySection(const char* section, bool isRussian) {
-    std::string s = section;
-    if (isRussian) {
-        if (s == "ANGLE") return "Базовые настройки";
-        if (s == "Boost") return "Основные ускорения";
-        if (s == "BoostAdvanced") return "Сложные твики";
-        if (s == "BoostRender") return "Настройки графики";
-        if (s == "BoostIO") return "Накопитель и ОЗУ";
-        if (s == "BoostCPU") return "Ядра процессора";
-        if (s == "BoostSystem") return "Приоритеты ОС";
-        if (s == "BoostLatency") return "Задержка и FPS";
-        if (s == "BoostGD") return "Ускорение игры (GD)";
-        if (s == "BoostRenderAdv") return "Сложный рендер";
-        if (s == "BoostCocos") return "Твики Cocos2d-x";
-        if (s == "BoostSysAdv") return "Твики Windows";
-        if (s == "BoostPipeline") return "Конвейер кадров";
-        if (s == "BoostNetwork") return "Сеть и сокеты";
-        if (s == "BoostAudio") return "Звуковая подсистема";
-        if (s == "BoostExtreme") return "Экстремальный буст";
-    } else {
-        if (s == "ANGLE") return "Core Settings";
-        if (s == "Boost") return "Basic Boosts";
-        if (s == "BoostAdvanced") return "Advanced Tweaks";
-        if (s == "BoostRender") return "Graphics & Rendering";
-        if (s == "BoostIO") return "I/O & Disk Buffers";
-        if (s == "BoostCPU") return "CPU & Core Affinity";
-        if (s == "BoostSystem") return "OS & Power Priority";
-        if (s == "BoostLatency") return "Latency & Target FPS";
-        if (s == "BoostGD") return "Geometry Dash Tweaks";
-        if (s == "BoostRenderAdv") return "Adv Graphics Pipeline";
-        if (s == "BoostCocos") return "Cocos2d-x Tweaks";
-        if (s == "BoostSysAdv") return "Adv Windows Priority";
-        if (s == "BoostPipeline") return "Draw Pipeline Optimizations";
-        if (s == "BoostNetwork") return "Network & Sockets";
-        if (s == "BoostAudio") return "Audio & FMOD Engine";
-        if (s == "BoostExtreme") return "Extreme & Risky Boosts";
-    }
-    return section;
-}
-
-const char* getFriendlyName(const char* section, const char* key, bool isRussian) {
-    std::string k = key;
-    if (isRussian) {
-        if (k == "enabled") return "Включить мод";
-        if (k == "backend") return "Рендерер (DirectX/OpenGL)";
-        if (k == "debug") return "Отладочный лог";
-        if (k == "log_file") return "Файл лога";
-        if (k == "frame_pacing") return "Управление кадрами (Frame Pacing)";
-        if (k == "frame_pacing_target") return "Лимит кадров (FPS)";
-        if (k == "force_no_vsync") return "Принудительно выключить VSync";
-        if (k == "gpu_forcer") return "Принудительно дискретная видеокарта";
-        if (k == "fast_allocator") return "Быстрый аллокатор памяти";
-        if (k == "timer_fix") return "Таймер Windows (1ms точность)";
-        if (k == "thread_boost") return "Повышенный приоритет потока";
-        if (k == "cpu_affinity") return "Маска ядер CPU (Affinity)";
-        if (k == "sse_math") return "SSE2 инструкции";
-        if (k == "power_boost") return "Отключить троттлинг питания (EcoQoS)";
-        if (k == "tex_compress") return "Сжатие текстур в DXT1";
-        if (k == "nvapi_profile") return "Профиль драйвера NVAPI";
-        if (k == "shader_cache") return "Кеширование шейдеров";
-        if (k == "shader_cache_dir") return "Папка для кеша шейдеров";
-        if (k == "large_address_aware") return "Доступ к 4 ГБ памяти (LAA)";
-        if (k == "gl_state_dedup") return "Дедупликация вызовов OpenGL";
-        if (k == "working_set_prefetch") return "Предзагрузка рабочих страниц";
-        if (k == "fmod_tuning") return "Тюнинг звука FMOD";
-        if (k == "fmod_sample_rate") return "Частота дискретизации FMOD";
-        if (k == "async_asset_loader") return "Асинхронная загрузка ассетов";
-        if (k == "async_loader_threads") return "Потоки загрузки ассетов";
-        if (k == "precise_sleep") return "Точный Sleep (Spin-wait)";
-        if (k == "heap_compact_interval") return "Интервал сжатия кучи";
-        if (k == "d3d11_multithread") return "Многопоточный рендер D3D11";
-        if (k == "depth_off") return "Отключить буфер глубины";
-        if (k == "mipmap_off") return "Отключить генерацию мипмапов";
-        if (k == "noop_finish") return "Игнорировать glFinish";
-        if (k == "noop_geterror") return "Игнорировать glGetError";
-        if (k == "vbo_pool") return "Пул буферов VBO";
-        if (k == "vbo_pool_size_mb") return "Размер пула VBO (МБ)";
-        if (k == "vertex_compress") return "Сжатие вершинных данных";
-        if (k == "instancing") return "Использовать инстансинг";
-        if (k == "dyn_resolution") return "Динамическое разрешение";
-        if (k == "dyn_res_target_fps") return "Целевой FPS разрешения";
-        if (k == "fast_io") return "Быстрое чтение диска";
-        if (k == "ramdisk_cache") return "Кеширование в оперативную память";
-        if (k == "ramdisk_path") return "Путь к RAM-диску";
-        if (k == "loader_cache") return "Кеширование GetProcAddress";
-        if (k == "sse_memcpy") return "Оптимизация memcpy через SSE2";
-        if (k == "scene_bvh") return "Ускорение отрисовки сцены (BVH)";
-        if (k == "string_intern") return "Кеширование строк (Interning)";
-        if (k == "mimalloc_full") return "Использовать аллокатор mimalloc";
-        if (k == "silent_debug") return "Скрыть отладочный вывод";
-        if (k == "wddm_priority") return "Приоритет планировщика WDDM";
-        if (k == "game_mode") return "Поддержка Windows Game Mode";
-        if (k == "smart_cpu_pin") return "Умный пиннинг потоков CPU";
-        if (k == "mitigation_off") return "Отключить защиты Windows";
-        if (k == "allow_tearing") return "Разрешить разрывы кадров (Tearing)";
-        if (k == "waitable_swap") return "Ожидаемый буфер обмена DXGI";
-        if (k == "mmcss_pro_audio") return "MMCSS приоритет (Pro Audio)";
-        if (k == "shader_warmup") return "Предкомпиляция шейдеров";
-        if (k == "low_latency") return "Минимальный буфер кадров DXGI";
-        if (k == "anti_stutter") return "Защита от фризов (Affinity)";
-        if (k == "skip_intro") return "Пропускать интро";
-        if (k == "object_pool") return "Пул объектов Cocos2d";
-        if (k == "object_pool_size") return "Размер пула объектов";
-        if (k == "trigger_cache") return "Кеширование триггеров";
-        if (k == "plist_binary") return "Бинарный кеш plist-файлов";
-        if (k == "plist_cache_dir") return "Папка для кеша plist-файлов";
-        if (k == "skip_shake_flash") return "Отключить тряску экрана";
-        if (k == "level_predecode") return "Предварительный декод уровней";
-        if (k == "predecode_threads") return "Потоки декодирования";
-        if (k == "atlas_merge") return "Слияние текстурных атласов";
-        if (k == "atlas_size") return "Размер страницы атласа";
-        if (k == "frustum_cull") return "Отсечение невидимых объектов";
-        if (k == "fbo_cache") return "Пул буферов FBO";
-        if (k == "fbo_pool_size") return "Ёмкость пула FBO";
-        if (k == "triple_buffer") return "Тройная буферизация";
-        if (k == "disable_aa") return "Отключить сглаживание (MSAA)";
-        if (k == "blend_optimize") return "Оптимизация смешивания цветов";
-        if (k == "particle_throttle") return "Ограничить количество частиц";
-        if (k == "particle_max") return "Лимит количества частиц";
-        if (k == "texcache_preload") return "Предзагрузка текстур";
-        if (k == "batch_force") return "Принудительный батчинг";
-        if (k == "label_cache") return "Кеширование CCLabel";
-        if (k == "scheduler_skip") return "Пропуск неактивных таймеров";
-        if (k == "drawcall_sort") return "Сортировка по текстуре";
-        if (k == "index_buffer_gen") return "Генерация индексных буферов";
-        if (k == "ftz_daz") return "FTZ/DAZ режимы процессора";
-        if (k == "spectre_off") return "Отключить защиты Spectre";
-        if (k == "io_priority") return "Приоритет ввода-вывода диска";
-        if (k == "mem_priority") return "Приоритет использования памяти";
-        if (k == "stack_trim") return "Ограничить стек потока";
-        if (k == "pipe_drawsort") return "Сортировка отрисовки пайплайна";
-        if (k == "scissor_tight") return "Более точный отсев scissor";
-        if (k == "vertex_dedup") return "Дедупликация вершин";
-        if (k == "halfres_effects") return "Пост-эффекты в 1/2 разрешении";
-        if (k == "shader_simplify") return "Упрощение кода шейдеров";
-        if (k == "batch_coalesce") return "Объединение мелких батчей";
-        if (k == "dns_prefetch") return "Предварительный резолв DNS";
-        if (k == "http_pool") return "Пул сетевых соединений HTTP";
-        if (k == "online_block_gameplay") return "Блокировать сеть во время игры";
-        if (k == "server_cache") return "Кеширование ответов сервера";
-        if (k == "winsock_opt") return "Оптимизация сокетов (Winsock)";
-        if (k == "fmod_channel_limit") return "Ограничить звуковые каналы";
-        if (k == "fmod_max_channels") return "Лимит звуковых каналов";
-        if (k == "fmod_software_mix") return "Программное микширование";
-        if (k == "audio_thread_pin") return "Выделить звуковой поток на ядро";
-        if (k == "sound_preload") return "Предзагрузка звуковых файлов";
-        if (k == "audio_ram_compress") return "Сжатие звуков в ОЗУ";
-        if (k == "etw_disable") return "Отключить трассировку ETW";
-        if (k == "wer_disable") return "Отключить отчеты об ошибках";
-        if (k == "smartscreen_off") return "Обход проверок SmartScreen";
-        if (k == "numa_aware") return "Учет архитектуры NUMA";
-        if (k == "huge_pages") return "Использовать Huge Pages";
-        if (k == "prefetcher_off") return "Отключить Superfetch/Prefetcher";
-        if (k == "workingset_lock") return "Заблокировать рабочее множество";
-        if (k == "gpu_thread_prio") return "Приоритет потока отправки GPU";
-        if (k == "present_skip_idle") return "Пропускать отрисовку при простое";
-        if (k == "halfres_render") return "Рендер в 1/2 разрешения с апскейлом";
-        if (k == "halfres_filter") return "Фильтрация апскейла 1/2 разрешения";
-        // ── v1.0.4 ──
-        if (k == "effect_lod") return "Адаптивный LOD эффектов";
-        if (k == "effect_lod_min_fps") return "Целевой FPS для LOD эффектов";
-        if (k == "static_batch") return "Кэш статичных VBO uploads";
-        if (k == "iocp_loader") return "IOCP-прогрев ассетов (NVMe)";
-        if (k == "iocp_loader_concurrency") return "Параллельность IOCP";
-        if (k == "present_hints") return "DXGI/DWM хинты задержки";
-        if (k == "thread_qos") return "EcoQoS off для всех потоков";
-    } else {
-        if (k == "enabled") return "Enable Mod";
-        if (k == "backend") return "Renderer (DirectX/OpenGL)";
-        if (k == "debug") return "Debug Log";
-        if (k == "log_file") return "Log File Path";
-        if (k == "frame_pacing") return "Frame Pacing (Smoothness)";
-        if (k == "frame_pacing_target") return "Target FPS Cap";
-        if (k == "force_no_vsync") return "Force Disable VSync";
-        if (k == "gpu_forcer") return "Force Discrete GPU";
-        if (k == "fast_allocator") return "Fast Memory Allocator";
-        if (k == "timer_fix") return "Windows Timer Resolution (1ms)";
-        if (k == "thread_boost") return "Thread Priority Boost";
-        if (k == "cpu_affinity") return "CPU Affinity Mask";
-        if (k == "sse_math") return "SSE2 Math Intrinsics";
-        if (k == "power_boost") return "Disable Power Throttling";
-        if (k == "tex_compress") return "Texture Compression DXT1";
-        if (k == "nvapi_profile") return "NVIDIA API Driver Profile";
-        if (k == "shader_cache") return "Disk Shader Cache";
-        if (k == "shader_cache_dir") return "Shader Cache Directory";
-        if (k == "large_address_aware") return "4GB Memory Patch (LAA)";
-        if (k == "gl_state_dedup") return "OpenGL State De-duplication";
-        if (k == "working_set_prefetch") return "Working Set Prefetch";
-        if (k == "fmod_tuning") return "FMOD Audio Engine Tuning";
-        if (k == "fmod_sample_rate") return "FMOD Sample Rate";
-        if (k == "async_asset_loader") return "Asynchronous Asset Loading";
-        if (k == "async_loader_threads") return "Asset Loader Threads";
-        if (k == "precise_sleep") return "Precise Spin-Wait Sleep";
-        if (k == "heap_compact_interval") return "Heap Compacting Interval";
-        if (k == "d3d11_multithread") return "D3D11 Multithreading Guard";
-        if (k == "depth_off") return "Disable Depth Testing";
-        if (k == "mipmap_off") return "Skip Mipmap Generation";
-        if (k == "noop_finish") return "No-op glFinish() Calls";
-        if (k == "noop_geterror") return "No-op glGetError() Calls";
-        if (k == "vbo_pool") return "VBO Buffer Pool";
-        if (k == "vbo_pool_size_mb") return "VBO Pool Size (MB)";
-        if (k == "vertex_compress") return "Vertex Float Compression";
-        if (k == "instancing") return "Instanced Drawing";
-        if (k == "dyn_resolution") return "Dynamic Resolution Scaling";
-        if (k == "dyn_res_target_fps") return "Dynamic Resolution Target FPS";
-        if (k == "fast_io") return "Fast Disk I/O Flags";
-        if (k == "ramdisk_cache") return "RAM-Disk Cache";
-        if (k == "ramdisk_path") return "RAM-Disk Directory Path";
-        if (k == "loader_cache") return "GetProcAddress Cache";
-        if (k == "sse_memcpy") return "SSE2 Optimized Memcpy";
-        if (k == "scene_bvh") return "BVH Scene Frustum Culling";
-        if (k == "string_intern") return "String Interning Optimization";
-        if (k == "mimalloc_full") return "Use mimalloc Allocator";
-        if (k == "silent_debug") return "Silence Cocos Debug Output";
-        if (k == "wddm_priority") return "WDDM Scheduling Priority";
-        if (k == "game_mode") return "Windows Game Mode Support";
-        if (k == "smart_cpu_pin") return "Smart CPU Thread Pinning";
-        if (k == "mitigation_off") return "Disable Security Mitigations";
-        if (k == "allow_tearing") return "Allow Screen Tearing";
-        if (k == "waitable_swap") return "DXGI Waitable Swap Chain";
-        if (k == "mmcss_pro_audio") return "MMCSS Pro Audio Priority";
-        if (k == "shader_warmup") return "Pre-compile Common Shaders";
-        if (k == "low_latency") return "DXGI Max Frame Latency (1)";
-        if (k == "anti_stutter") return "Anti-Stutter Threading Fixes";
-        if (k == "skip_intro") return "Skip Video Intro";
-        if (k == "object_pool") return "Cocos2d Node Object Pool";
-        if (k == "object_pool_size") return "Object Pool Max Size";
-        if (k == "trigger_cache") return "Cache Trigger Evaluation";
-        if (k == "plist_binary") return "Binary Plist File Cache";
-        if (k == "plist_cache_dir") return "Plist Cache Directory";
-        if (k == "skip_shake_flash") return "Disable Screen Shake/Flash";
-        if (k == "level_predecode") return "Pre-decode Levels";
-        if (k == "predecode_threads") return "Pre-decode Threads";
-        if (k == "atlas_merge") return "On-the-fly Atlas Merging";
-        if (k == "atlas_size") return "Texture Atlas Page Size";
-        if (k == "frustum_cull") return "Frustum Node Culling";
-        if (k == "fbo_cache") return "FBO Buffer Pool";
-        if (k == "fbo_pool_size") return "FBO Pool Capacity";
-        if (k == "triple_buffer") return "Triple Buffering";
-        if (k == "disable_aa") return "Disable Anti-Aliasing (AA)";
-        if (k == "blend_optimize") return "Optimize Blend Calculations";
-        if (k == "particle_throttle") return "Limit Active Particles";
-        if (k == "particle_max") return "Max Particles Limit";
-        if (k == "texcache_preload") return "Pre-warm Texture Cache";
-        if (k == "batch_force") return "Force Batch Draw Calls";
-        if (k == "label_cache") return "CCLabel Glyphs Cache";
-        if (k == "scheduler_skip") return "Skip Inactive CCScheduler";
-        if (k == "drawcall_sort") return "Sort Draw Calls by Texture";
-        if (k == "index_buffer_gen") return "Generate Index Buffers";
-        if (k == "ftz_daz") return "FPU Flush-to-Zero (FTZ/DAZ)";
-        if (k == "spectre_off") return "Disable Spectre Protections";
-        if (k == "io_priority") return "I/O Scheduling Priority";
-        if (k == "mem_priority") return "Memory Priority Boost";
-        if (k == "stack_trim") return "Trim Main Thread Stack";
-        if (k == "pipe_drawsort") return "Pipeline Draw Sorting";
-        if (k == "scissor_tight") return "Tighter Scissor Clipping";
-        if (k == "vertex_dedup") return "Deduplicate Vertices";
-        if (k == "halfres_effects") return "Half-Resolution Post Effects";
-        if (k == "shader_simplify") return "Use Simpler Shaders";
-        if (k == "batch_coalesce") return "Coalesce Small Draw Batches";
-        if (k == "dns_prefetch") return "Pre-resolve Server DNS";
-        if (k == "http_pool") return "HTTP Connection Pooling";
-        if (k == "online_block_gameplay") return "Block Network in Levels";
-        if (k == "server_cache") return "Cache Server GET Responses";
-        if (k == "winsock_opt") return "Winsock Performance Optimizations";
-        if (k == "fmod_channel_limit") return "Limit FMOD Audio Channels";
-        if (k == "fmod_max_channels") return "Max Sound Channels Limit";
-        if (k == "fmod_software_mix") return "FMOD Software Mixing";
-        if (k == "audio_thread_pin") return "Pin Audio Thread to Core";
-        if (k == "sound_preload") return "Preload Audio Buffers";
-        if (k == "audio_ram_compress") return "Audio Buffer Compression";
-        if (k == "etw_disable") return "Disable Windows ETW Tracing";
-        if (k == "wer_disable") return "Disable Error Reporting (WER)";
-        if (k == "smartscreen_off") return "Bypass SmartScreen Prompts";
-        if (k == "numa_aware") return "NUMA-Aware Memory Alloc";
-        if (k == "huge_pages") return "Use 2MB Huge Pages";
-        if (k == "prefetcher_off") return "Disable Superfetch/Prefetcher";
-        if (k == "workingset_lock") return "Lock Process Working Set";
-        if (k == "gpu_thread_prio") return "GPU Command Thread Priority";
-        if (k == "present_skip_idle") return "Skip Present on Idle Scenes";
-        if (k == "halfres_render") return "Half-Resolution Upscaling (3D)";
-        if (k == "halfres_filter") return "Half-Resolution Upscaling Filter";
-        // ── v1.0.4 ──
-        if (k == "effect_lod") return "Adaptive Effect LOD";
-        if (k == "effect_lod_min_fps") return "Effect LOD Target FPS";
-        if (k == "static_batch") return "Static Buffer Upload Cache";
-        if (k == "iocp_loader") return "IOCP Asset Prewarmer (NVMe)";
-        if (k == "iocp_loader_concurrency") return "IOCP Concurrency";
-        if (k == "present_hints") return "DXGI/DWM Latency Hints";
-        if (k == "thread_qos") return "Per-Thread EcoQoS Off";
-    }
-    return key;
 }

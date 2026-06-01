@@ -14,10 +14,6 @@ namespace glproxy {
     void init();
 }
 
-extern "C" void gdangle_repairDefaultFramebufferForMegaHack();
-extern "C" void gdangle_beginMegaHackFrame();
-extern "C" void gdangle_noteMegaHackOverlayDraw();
-
 // helper macro for generating a forwarding stub
 #define GLP_FORWARD(ret, name, sig, args) \
     extern "C" __declspec(dllexport) ret WINAPI gl_##name sig { \

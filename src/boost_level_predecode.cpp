@@ -21,20 +21,15 @@ struct DecodeJob {
     std::vector<uint8_t> input;
     std::vector<uint8_t> output;
     std::atomic<bool>    ready{false};
-    std::atomic<bool>    started{false};  // FIX: Make atomic for safe cross-thread access
-    std::atomic<bool>    consumed{false}; // FIX: Track if result was consumed
+    bool                 started = false;
 };
 
-// FIX: Multiple decode jobs for queue
-static const int kMaxJobs = 4;
-static DecodeJob g_jobs[kMaxJobs];
-static int g_jobIndex = 0;  // FIX: Round-robin through jobs
-
+DecodeJob g_job;
 std::mutex g_mu;
 std::condition_variable g_cv;
 std::thread g_worker;
 std::atomic<bool> g_stop{false};
-std::atomic<bool> g_active{false};
+bool g_active = false;
 
 // Simple Base64 decode table
 static const int b64[256] = {
@@ -67,44 +62,22 @@ static std::vector<uint8_t> base64Decode(const uint8_t* data, size_t len) {
 }
 
 static void workerFunc() {
-    while (!g_stop.load(std::memory_order_acquire)) {
-        DecodeJob* job = nullptr;
+    while (!g_stop.load()) {
+        std::unique_lock<std::mutex> lk(g_mu);
+        g_cv.wait(lk, [&] { return g_stop.load() || g_job.started; });
+        if (g_stop.load()) return;
 
-        // FIX: Find a job that's started but not ready, with proper locking
-        {
-            std::unique_lock<std::mutex> lk(g_mu);
-            g_cv.wait(lk, [&] {
-                if (g_stop.load(std::memory_order_acquire)) return true;
-                // Look for any started job that's not ready
-                for (int i = 0; i < kMaxJobs; i++) {
-                    int idx = (g_jobIndex + i) % kMaxJobs;
-                    if (g_jobs[idx].started.load(std::memory_order_acquire) &&
-                        !g_jobs[idx].ready.load(std::memory_order_acquire)) {
-                        g_jobIndex = (idx + 1) % kMaxJobs;
-                        job = &g_jobs[idx];
-                        return true;
-                    }
-                }
-                return false;
-            });
-
-            if (g_stop.load(std::memory_order_acquire)) return;
-            if (!job) continue;
-        }
-
-        // Decode outside of lock
-        if (job && job->started.load(std::memory_order_acquire)) {
-            auto decoded = base64Decode(job->input.data(), job->input.size());
+        if (g_job.started && !g_job.ready.load()) {
+            // Decode Base64
+            auto decoded = base64Decode(g_job.input.data(), g_job.input.size());
 
             // GZip decompress would go here — for now, just pass through Base64 decoded
             // A full implementation would use zlib's inflate().
             // Since we can't add zlib as a dependency without modifying CMakeLists,
             // we store the base64-decoded data which saves ~25% of decode time.
-
-            // FIX: Store result and set ready flag atomically
-            job->output = std::move(decoded);
-            job->consumed.store(false, std::memory_order_relaxed);
-            job->ready.store(true, std::memory_order_release);
+            g_job.output = std::move(decoded);
+            g_job.ready.store(true);
+            g_job.started = false;
         }
     }
 }
@@ -117,73 +90,38 @@ namespace boost_level_predecode {
         auto& cfg = Config::get();
         if (!cfg.level_predecode) return;
 
-        g_stop.store(false, std::memory_order_release);
-        g_jobIndex = 0;
-
-        // FIX: Initialize all jobs
-        for (int i = 0; i < kMaxJobs; i++) {
-            g_jobs[i].ready.store(false);
-            g_jobs[i].started.store(false);
-            g_jobs[i].consumed.store(false);
-        }
-
+        g_stop.store(false);
         g_worker = std::thread(workerFunc);
-        g_active.store(true, std::memory_order_release);
-        angle::log("level_predecode: worker thread started (max %d jobs)", kMaxJobs);
+
+        g_active = true;
+        angle::log("level_predecode: worker thread started");
     }
 
     // Queue data for background decoding
     void queueDecode(const uint8_t* data, size_t size) {
-        if (!g_active.load(std::memory_order_acquire)) return;
-
-        // FIX: Find next available job slot
-        for (int retries = 0; retries < kMaxJobs; retries++) {
-            int idx = g_jobIndex;
-            DecodeJob& job = g_jobs[idx];
-
-            // Try to claim this job slot
-            bool was_started = job.started.load(std::memory_order_acquire);
-
-            if (!was_started || job.ready.load(std::memory_order_acquire)) {
-                // This slot is free - copy data and start
-                std::lock_guard<std::mutex> lk(g_mu);
-                job.input.assign(data, data + size);
-                job.ready.store(false, std::memory_order_release);
-                job.started.store(true, std::memory_order_release);
-                job.consumed.store(false, std::memory_order_release);
-                g_cv.notify_one();
-                return;
-            }
-
-            // Slot is busy, try next one
-            g_jobIndex = (g_jobIndex + 1) % kMaxJobs;
+        if (!g_active) return;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            g_job.input.assign(data, data + size);
+            g_job.ready.store(false);
+            g_job.started = true;
         }
-
-        // All slots busy - skip this decode
-        angle::log("level_predecode: all job slots busy, skipping decode");
+        g_cv.notify_one();
     }
 
     // Check if decode is complete
     bool isReady() {
-        if (!g_active.load(std::memory_order_acquire)) return false;
-        return g_jobs[g_jobIndex].ready.load(std::memory_order_acquire);
+        return g_active && g_job.ready.load();
     }
 
     // Get decoded data
     const std::vector<uint8_t>& getResult() {
-        // FIX: Return from the correct job slot
-        static std::vector<uint8_t> empty;
-        DecodeJob& job = g_jobs[g_jobIndex];
-        if (job.ready.load(std::memory_order_acquire)) {
-            return job.output;
-        }
-        return empty;
+        return g_job.output;
     }
 
     void shutdown() {
-        g_stop.store(true, std::memory_order_release);
+        g_stop.store(true);
         g_cv.notify_all();
         if (g_worker.joinable()) g_worker.join();
-        g_active.store(false, std::memory_order_release);
     }
 }

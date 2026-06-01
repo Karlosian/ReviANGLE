@@ -30,12 +30,11 @@ static std::string keyToPath(const void* key, long keySize) {
 
 static void WINAPI blobSet(const void* key, long keySize, const void* value, long valueSize) {
     auto path = keyToPath(key, keySize);
-    // Use _fsopen for exclusive write to prevent concurrent corruption
-    FILE* f = nullptr;
-    errno_t err = fopen_s(&f, path.c_str(), "wb");
-    if (err != 0 || !f) return;
-    std::fwrite(value, 1, (size_t)valueSize, f);
-    std::fclose(f);
+    FILE* f = std::fopen(path.c_str(), "wb");
+    if (f) {
+        std::fwrite(value, 1, (size_t)valueSize, f);
+        std::fclose(f);
+    }
 }
 
 static long WINAPI blobGet(const void* key, long keySize, void* value, long valueSize) {

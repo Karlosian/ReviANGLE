@@ -40,9 +40,6 @@ public:
 
     bool has(const std::string& section, const std::string& key) const;
 
-    // Remove a key/value line from a section.
-    void remove(const std::string& section, const std::string& key);
-
     const std::vector<IniLine>& lines() const { return m_lines; }
 
 private:

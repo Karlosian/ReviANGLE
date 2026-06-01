@@ -115,35 +115,24 @@ static PFN_Present1 real_Present1 = nullptr;
 // RO data, so we VirtualProtect it RW for the duration of the swap, then restore).
 // Subsequent objects of the same vtable type inherit the hook automatically.
 static void* patchVtableSlot(void* obj, int slot, void* newFn) {
-    angle::log("[ALLOW_TEARING] patchVtableSlot: obj=%p, slot=%d, newFn=%p", obj, slot, newFn);
-    if (!obj || !newFn) {
-        angle::log("[ALLOW_TEARING] patchVtableSlot: NULL obj or newFn, skipping");
-        return nullptr;
-    }
+    if (!obj || !newFn) return nullptr;
     void** vtbl = *(void***)obj;
-    angle::log("[ALLOW_TEARING] patchVtableSlot: vtbl=%p", vtbl);
-    if (!vtbl) {
-        angle::log("[ALLOW_TEARING] patchVtableSlot: NULL vtbl, skipping");
-        return nullptr;
-    }
+    if (!vtbl) return nullptr;
     void** slotAddr = &vtbl[slot];
-    angle::log("[ALLOW_TEARING] patchVtableSlot: slotAddr=%p, current=%p", slotAddr, *slotAddr);
 
     DWORD old = 0;
     if (!VirtualProtect(slotAddr, sizeof(void*), PAGE_READWRITE, &old)) {
-        angle::log("[ALLOW_TEARING] patchVtableSlot: VirtualProtect RW failed at vtbl[%d] (gle=%lu)", slot, GetLastError());
+        angle::log("allow_tearing: VirtualProtect RW failed at vtbl[%d] (gle=%lu)", slot, GetLastError());
         return nullptr;
     }
     void* original = *slotAddr;
-    angle::log("[ALLOW_TEARING] patchVtableSlot: original=%p", original);
     if (original == newFn) {
-        angle::log("[ALLOW_TEARING] patchVtableSlot: already patched");
+        // already patched
         DWORD tmp;
         VirtualProtect(slotAddr, sizeof(void*), old, &tmp);
         return nullptr;
     }
     *slotAddr = newFn;
-    angle::log("[ALLOW_TEARING] patchVtableSlot: patched!");
     DWORD tmp;
     VirtualProtect(slotAddr, sizeof(void*), old, &tmp);
     return original;
@@ -154,7 +143,6 @@ static void detourSwapChainVtables(void* swap);
 
 // --- Present hooks ---------------------------------------------------------
 static HRESULT STDMETHODCALLTYPE Hook_Present(void* self, UINT syncInterval, UINT flags) {
-    if (!real_Present) return E_FAIL;
     // Force unlocked present when caller asks for vsync-off.
     // ANGLE invokes Present(0, 0) when eglSwapInterval(0) is set; without
     // ALLOW_TEARING flag, DXGI flip-model swap chain still waits for vblank.
@@ -164,7 +152,6 @@ static HRESULT STDMETHODCALLTYPE Hook_Present(void* self, UINT syncInterval, UIN
     return real_Present(self, syncInterval, flags);
 }
 static HRESULT STDMETHODCALLTYPE Hook_Present1(void* self, UINT syncInterval, UINT flags, const void* params) {
-    if (!real_Present1) return E_FAIL;
     if (syncInterval == 0 && g_tearingSupported.load(std::memory_order_relaxed)) {
         flags |= DXGI_PRESENT_ALLOW_TEARING;
     }
@@ -223,7 +210,7 @@ static void detourSwapChainVtables(void* swap) {
 // eglCreateWindowSurface, which kills GD's window context creation.
 //
 // ANGLE's swap-chain backend may pick BLIT model on certain hardware/driver
-// combos (e.g. older integrated or dedicated GPUs). We must only inject the
+// combos (e.g. older Intel HD, legacy Nvidia Kepler). We must only inject the
 // flag when the requested swap effect is already flip-model; otherwise the
 // flag is a no-op anyway and would only break things.
 static inline bool isFlipModel(UINT swapEffect) {
@@ -233,7 +220,6 @@ static inline bool isFlipModel(UINT swapEffect) {
 
 static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChain(void* self, IUnknown* dev,
         DXGI_SWAP_CHAIN_DESC_min* desc, void** out) {
-    if (!real_CreateSwapChain) return E_FAIL;
     bool injected = false;
     if (desc && isFlipModel(desc->swapEffect)) {
         desc->flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
@@ -252,7 +238,6 @@ static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChain(void* self, IUnknown* dev,
 }
 static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChainForHwnd(void* self, IUnknown* dev,
         HWND hwnd, const DXGI_SWAP_CHAIN_DESC1_min* desc, const void* fsdesc, void* output, void** out) {
-    if (!real_CreateSwapChainForHwnd) return E_FAIL;
     DXGI_SWAP_CHAIN_DESC1_min patched{};
     bool injected = false;
     if (desc) {
@@ -275,7 +260,6 @@ static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChainForHwnd(void* self, IUnknow
 }
 static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChainForCoreWindow(void* self, IUnknown* dev,
         IUnknown* window, const DXGI_SWAP_CHAIN_DESC1_min* desc, void* output, void** out) {
-    if (!real_CreateSwapChainForCoreWindow) return E_FAIL;
     DXGI_SWAP_CHAIN_DESC1_min patched{};
     bool injected = false;
     if (desc) {
@@ -294,7 +278,6 @@ static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChainForCoreWindow(void* self, I
 }
 static HRESULT STDMETHODCALLTYPE Hook_CreateSwapChainForComposition(void* self, IUnknown* dev,
         const DXGI_SWAP_CHAIN_DESC1_min* desc, void* output, void** out) {
-    if (!real_CreateSwapChainForComposition) return E_FAIL;
     DXGI_SWAP_CHAIN_DESC1_min patched{};
     bool injected = false;
     if (desc) {
@@ -326,41 +309,23 @@ static void detourFactoryVtable(void* factory) {
         angle::log("allow_tearing: patched IDXGIFactory::CreateSwapChain (orig=%p)", p10);
     }
 
-    // IDXGIFactory2 methods live in a DIFFERENT vtable (extended interface).
-    // Patching slots 15/16/24 on a base IDXGIFactory/IDXGIFactory1 vtable is
-    // OUT OF BOUNDS and corrupts dxgi.dll .rdata → random AVs in dxgi.dll.
-    struct IUnknownVtbl {
-        HRESULT(STDMETHODCALLTYPE* QueryInterface)(void*, REFIID, void**);
-        ULONG(STDMETHODCALLTYPE* AddRef)(void*);
-        ULONG(STDMETHODCALLTYPE* Release)(void*);
-    };
-    static const GUID IID_IDXGIFactory2 = {
-        0x50c83a1c, 0x0722, 0x4c70, {0x8c, 0xdd, 0xfb, 0x8e, 0x74, 0x56, 0xb0, 0xdd}
-    };
-    auto* vtbl = *(IUnknownVtbl**)factory;
-    void* factory2 = nullptr;
-    if (SUCCEEDED(vtbl->QueryInterface(factory, IID_IDXGIFactory2, &factory2)) && factory2) {
-        // IDXGIFactory2::CreateSwapChainForHwnd  (slot 15)
-        void* p15 = patchVtableSlot(factory2, 15, (void*)&Hook_CreateSwapChainForHwnd);
-        if (p15) {
-            real_CreateSwapChainForHwnd = (PFN_CreateSwapChainForHwnd)p15;
-            angle::log("allow_tearing: patched IDXGIFactory2::CreateSwapChainForHwnd (orig=%p)", p15);
-        }
+    // IDXGIFactory2::CreateSwapChainForHwnd  (slot 15)
+    void* p15 = patchVtableSlot(factory, 15, (void*)&Hook_CreateSwapChainForHwnd);
+    if (p15) {
+        real_CreateSwapChainForHwnd = (PFN_CreateSwapChainForHwnd)p15;
+        angle::log("allow_tearing: patched IDXGIFactory2::CreateSwapChainForHwnd (orig=%p)", p15);
+    }
 
-        // IDXGIFactory2::CreateSwapChainForCoreWindow  (slot 16)
-        void* p16 = patchVtableSlot(factory2, 16, (void*)&Hook_CreateSwapChainForCoreWindow);
-        if (p16) {
-            real_CreateSwapChainForCoreWindow = (PFN_CreateSwapChainForCoreWindow)p16;
-        }
+    // IDXGIFactory2::CreateSwapChainForCoreWindow  (slot 16)
+    void* p16 = patchVtableSlot(factory, 16, (void*)&Hook_CreateSwapChainForCoreWindow);
+    if (p16) {
+        real_CreateSwapChainForCoreWindow = (PFN_CreateSwapChainForCoreWindow)p16;
+    }
 
-        // IDXGIFactory2::CreateSwapChainForComposition (slot 24)
-        void* p24 = patchVtableSlot(factory2, 24, (void*)&Hook_CreateSwapChainForComposition);
-        if (p24) {
-            real_CreateSwapChainForComposition = (PFN_CreateSwapChainForComposition)p24;
-        }
-
-        auto* vtbl2 = *(IUnknownVtbl**)factory2;
-        vtbl2->Release(factory2);
+    // IDXGIFactory2::CreateSwapChainForComposition (slot 24)
+    void* p24 = patchVtableSlot(factory, 24, (void*)&Hook_CreateSwapChainForComposition);
+    if (p24) {
+        real_CreateSwapChainForComposition = (PFN_CreateSwapChainForComposition)p24;
     }
 }
 
@@ -444,9 +409,8 @@ static bool probeTearingSupport() {
 namespace boost_allow_tearing {
 
     void apply() {
-        angle::log("[ALLOW_TEARING] === apply() START ===");
         if (!Config::get().allow_tearing) {
-            angle::log("[ALLOW_TEARING] disabled by config, exiting");
+            angle::log("allow_tearing: disabled by config");
             return;
         }
 
@@ -457,120 +421,81 @@ namespace boost_allow_tearing {
         // process and trigger AVs in d3d11.dll (observed empirically as a
         // wglMakeCurrent → d3d11.dll!0xf2f5 crash). Skip cleanly here.
         const std::string& be = Config::get().backend;
-        angle::log("[ALLOW_TEARING] backend=%s", be.c_str());
         if (be != "d3d11") {
-            angle::log("[ALLOW_TEARING] not d3d11 backend, skipping");
+            angle::log("allow_tearing: backend=%s (not d3d11), skipping hooks", be.c_str());
             return;
         }
 
         // Probe driver/OS capability before installing hooks.
-        angle::log("[ALLOW_TEARING] probing tearing support...");
         if (!probeTearingSupport()) {
-            angle::log("[ALLOW_TEARING] tearing NOT supported, skipping hooks");
+            angle::log("allow_tearing: tearing not supported, skipping hooks");
             return;
         }
         g_tearingSupported.store(true, std::memory_order_release);
-        angle::log("[ALLOW_TEARING] tearing SUPPORTED, will patch");
 
         // Resolve real DXGI entry points (we'll forward to these from our hooks).
-        angle::log("[ALLOW_TEARING] loading dxgi.dll...");
         HMODULE dxgi = GetModuleHandleA("dxgi.dll");
+        if (!dxgi) dxgi = LoadLibraryA("dxgi.dll");
         if (!dxgi) {
-            angle::log("[ALLOW_TEARING] GetModuleHandleA failed, trying LoadLibraryA...");
-            dxgi = LoadLibraryA("dxgi.dll");
-        }
-        if (!dxgi) {
-            angle::log("[ALLOW_TEARING] dxgi.dll STILL missing after LoadLibraryA, abort");
+            angle::log("allow_tearing: dxgi.dll missing, abort");
             return;
         }
-        angle::log("[ALLOW_TEARING] dxgi.dll=%p", dxgi);
         real_CreateDXGIFactory1 = (PFN_CreateDXGIFactory1)GetProcAddress(dxgi, "CreateDXGIFactory1");
         real_CreateDXGIFactory2 = (PFN_CreateDXGIFactory2)GetProcAddress(dxgi, "CreateDXGIFactory2");
-        angle::log("[ALLOW_TEARING] CreateDXGIFactory1=%p, CreateDXGIFactory2=%p",
-                   real_CreateDXGIFactory1, real_CreateDXGIFactory2);
 
         // Install IAT hooks on libGLESv2.dll so subsequent ANGLE calls hit ours.
-        angle::log("[ALLOW_TEARING] hooking libGLESv2.dll IAT...");
+        // ANGLE may have already created its factory by the time we run (we're
+        // invoked from gdangle_postGLInit, after wglMakeCurrent succeeded). In
+        // that case the IAT hook still helps if ANGLE re-creates a factory
+        // (e.g. on display loss), AND we'll catch the existing swap chain on
+        // first SwapBuffers via a separate path. For now: install + log.
+
         HMODULE gles2 = GetModuleHandleA("libGLESv2.dll");
-        angle::log("[ALLOW_TEARING] libGLESv2.dll=%p", gles2);
         if (gles2) {
             void* old1 = iat::hook(gles2, "dxgi.dll", "CreateDXGIFactory1", (void*)&Hook_CreateDXGIFactory1);
             if (old1) {
                 if (!real_CreateDXGIFactory1) real_CreateDXGIFactory1 = (PFN_CreateDXGIFactory1)old1;
-                angle::log("[ALLOW_TEARING] IAT hook libGLESv2!CreateDXGIFactory1 OK (orig=%p)", old1);
-            } else {
-                angle::log("[ALLOW_TEARING] IAT hook libGLESv2!CreateDXGIFactory1 FAILED");
+                angle::log("allow_tearing: IAT hook libGLESv2!CreateDXGIFactory1 OK (orig=%p)", old1);
             }
             void* old2 = iat::hook(gles2, "dxgi.dll", "CreateDXGIFactory2", (void*)&Hook_CreateDXGIFactory2);
             if (old2) {
                 if (!real_CreateDXGIFactory2) real_CreateDXGIFactory2 = (PFN_CreateDXGIFactory2)old2;
-                angle::log("[ALLOW_TEARING] IAT hook libGLESv2!CreateDXGIFactory2 OK (orig=%p)", old2);
-            } else {
-                angle::log("[ALLOW_TEARING] IAT hook libGLESv2!CreateDXGIFactory2 FAILED");
+                angle::log("allow_tearing: IAT hook libGLESv2!CreateDXGIFactory2 OK (orig=%p)", old2);
             }
-        } else {
-            angle::log("[ALLOW_TEARING] libGLESv2.dll NOT FOUND");
         }
 
-        // Also hook libEGL.dll — ANGLE's EGL implementation calls CreateDXGIFactory
-        // internally from libEGL.dll, not libGLESv2.dll.
-        angle::log("[ALLOW_TEARING] hooking libEGL.dll IAT...");
-        HMODULE egl = GetModuleHandleA("libEGL.dll");
-        angle::log("[ALLOW_TEARING] libEGL.dll=%p", egl);
-        if (egl) {
-            void* old1 = iat::hook(egl, "dxgi.dll", "CreateDXGIFactory1", (void*)&Hook_CreateDXGIFactory1);
-            if (old1) {
-                if (!real_CreateDXGIFactory1) real_CreateDXGIFactory1 = (PFN_CreateDXGIFactory1)old1;
-                angle::log("[ALLOW_TEARING] IAT hook libEGL!CreateDXGIFactory1 OK (orig=%p)", old1);
-            } else {
-                angle::log("[ALLOW_TEARING] IAT hook libEGL!CreateDXGIFactory1 FAILED (not imported?)");
-            }
-            void* old2 = iat::hook(egl, "dxgi.dll", "CreateDXGIFactory2", (void*)&Hook_CreateDXGIFactory2);
-            if (old2) {
-                if (!real_CreateDXGIFactory2) real_CreateDXGIFactory2 = (PFN_CreateDXGIFactory2)old2;
-                angle::log("[ALLOW_TEARING] IAT hook libEGL!CreateDXGIFactory2 OK (orig=%p)", old2);
-            } else {
-                angle::log("[ALLOW_TEARING] IAT hook libEGL!CreateDXGIFactory2 FAILED (not imported?)");
-            }
-        } else {
-            angle::log("[ALLOW_TEARING] libEGL.dll NOT FOUND");
-        }
-
-        // Try to catch already-created swap chain
-        angle::log("[ALLOW_TEARING] checking ANGLE state...");
+        // Catch already-created swap chain (if ANGLE made one before our hooks).
+        // ANGLE exposes the D3D11 device via EGL_D3D11_DEVICE_ANGLE (0x33A1).
+        // From the device we can reach the swap chain through DXGI device chain,
+        // but this is fragile — easier path: vtable patch is shared, so the FIRST
+        // present from any swap chain hits our hook IF we install vtable patch
+        // proactively via the factory of the existing swap chain. We do so by
+        // walking: D3D11Device -> IDXGIDevice -> GetParent(IDXGIAdapter) ->
+        // GetParent(IDXGIFactory).
         auto& a = angle::state();
-        angle::log("[ALLOW_TEARING] angle state: egl=%p, display=%p", a.egl, a.display);
         if (!a.egl || !a.display) {
-            angle::log("[ALLOW_TEARING] ANGLE not ready yet, IAT hooks installed for future calls");
-            angle::log("[ALLOW_TEARING] === apply() END (early) ===");
+            angle::log("allow_tearing: ANGLE not ready, IAT hooks installed for future calls");
             return;
         }
 
         using QueryDisplayAttribFn = int(*)(void*, int, intptr_t*);
         using QueryDeviceAttribFn  = int(*)(void*, int, intptr_t*);
-        angle::log("[ALLOW_TEARING] querying EGL device extensions...");
         auto qDisp = (QueryDisplayAttribFn)GetProcAddress(a.egl, "eglQueryDisplayAttribEXT");
         auto qDev  = (QueryDeviceAttribFn) GetProcAddress(a.egl, "eglQueryDeviceAttribEXT");
-        angle::log("[ALLOW_TEARING] eglQueryDisplayAttribEXT=%p, eglQueryDeviceAttribEXT=%p", qDisp, qDev);
         if (!qDisp || !qDev) {
-            angle::log("[ALLOW_TEARING] EGL device-query extensions MISSING");
-            angle::log("[ALLOW_TEARING] === apply() END (no EGL exts) ===");
+            angle::log("allow_tearing: EGL device-query extensions missing");
             return;
         }
         intptr_t eglDevice = 0;
         if (!qDisp(a.display, 0x322C /*EGL_DEVICE_EXT*/, &eglDevice) || !eglDevice) {
-            angle::log("[ALLOW_TEARING] no EGL device");
-            angle::log("[ALLOW_TEARING] === apply() END (no EGL device) ===");
+            angle::log("allow_tearing: no EGL device");
             return;
         }
-        angle::log("[ALLOW_TEARING] EGL device=%p", (void*)eglDevice);
         intptr_t d3d11Device = 0;
         if (!qDev((void*)eglDevice, 0x33A1 /*EGL_D3D11_DEVICE_ANGLE*/, &d3d11Device) || !d3d11Device) {
-            angle::log("[ALLOW_TEARING] no D3D11 device from EGL device");
-            angle::log("[ALLOW_TEARING] === apply() END (no D3D11 device) ===");
+            angle::log("allow_tearing: no D3D11 device");
             return;
         }
-        angle::log("[ALLOW_TEARING] D3D11 device=%p", (void*)d3d11Device);
         // QI for IDXGIDevice
         static const GUID IID_IDXGIDevice = {
             0x54ec77fa, 0x1377, 0x44e6, {0x8c, 0x32, 0x88, 0xfd, 0x5f, 0x44, 0xc8, 0x4c}
@@ -581,29 +506,21 @@ namespace boost_allow_tearing {
             ULONG(STDMETHODCALLTYPE* Release)(void*);
         };
         auto* devVtbl = *(IUnknownVtbl**)d3d11Device;
-        angle::log("[ALLOW_TEARING] D3D11Device vtable=%p", (void*)devVtbl);
         void* dxgiDev = nullptr;
-        HRESULT hr = devVtbl->QueryInterface((void*)d3d11Device, IID_IDXGIDevice, &dxgiDev);
-        angle::log("[ALLOW_TEARING] QI IDXGIDevice: hr=0x%X, dxgiDev=%p", hr, dxgiDev);
-        if (FAILED(hr) || !dxgiDev) {
-            angle::log("[ALLOW_TEARING] device->IDXGIDevice QI FAILED");
-            angle::log("[ALLOW_TEARING] === apply() END (QI failed) ===");
+        if (FAILED(devVtbl->QueryInterface((void*)d3d11Device, IID_IDXGIDevice, &dxgiDev)) || !dxgiDev) {
+            angle::log("allow_tearing: device->IDXGIDevice QI failed");
             return;
         }
         // IDXGIDevice::GetAdapter at slot 7
         using GetAdapterFn = HRESULT(STDMETHODCALLTYPE*)(void*, void**);
         auto** dxgiDevVtbl = *(void***)dxgiDev;
-        angle::log("[ALLOW_TEARING] IDXGIDevice vtable=%p", (void*)dxgiDevVtbl);
         auto getAdapter = (GetAdapterFn)dxgiDevVtbl[7];
-        angle::log("[ALLOW_TEARING] GetAdapter fn=%p", (void*)getAdapter);
         void* adapter = nullptr;
-        hr = getAdapter(dxgiDev, &adapter);
-        angle::log("[ALLOW_TEARING] GetAdapter: hr=0x%X, adapter=%p", hr, adapter);
+        HRESULT hr = getAdapter(dxgiDev, &adapter);
         auto* dxgiDevVtblIUnk = *(IUnknownVtbl**)dxgiDev;
         dxgiDevVtblIUnk->Release(dxgiDev);
         if (FAILED(hr) || !adapter) {
-            angle::log("[ALLOW_TEARING] GetAdapter FAILED");
-            angle::log("[ALLOW_TEARING] === apply() END (GetAdapter failed) ===");
+            angle::log("allow_tearing: GetAdapter failed");
             return;
         }
         // IDXGIObject::GetParent at slot 6 -> returns parent IDXGIFactory
@@ -612,26 +529,20 @@ namespace boost_allow_tearing {
             0x7b7166ec, 0x21c7, 0x44ae, {0xb2, 0x1a, 0xc9, 0xae, 0x32, 0x1a, 0xe3, 0x69}
         };
         auto** adVtbl = *(void***)adapter;
-        angle::log("[ALLOW_TEARING] IDXGIAdapter vtable=%p", (void*)adVtbl);
         auto adGetParent = (GetParentFn)adVtbl[6];
-        angle::log("[ALLOW_TEARING] GetParent fn=%p", (void*)adGetParent);
         void* factory = nullptr;
         hr = adGetParent(adapter, IID_IDXGIFactory, &factory);
-        angle::log("[ALLOW_TEARING] GetParent(IDXGIFactory): hr=0x%X, factory=%p", hr, factory);
         auto* adVtblIUnk = *(IUnknownVtbl**)adapter;
         adVtblIUnk->Release(adapter);
         if (FAILED(hr) || !factory) {
-            angle::log("[ALLOW_TEARING] GetParent(IDXGIFactory) FAILED");
-            angle::log("[ALLOW_TEARING] === apply() END (GetParent failed) ===");
+            angle::log("allow_tearing: GetParent(IDXGIFactory) failed");
             return;
         }
-        angle::log("[ALLOW_TEARING] IDXGIFactory=%p, patching...", factory);
         detourFactoryVtable(factory);
         auto* facVtblIUnk = *(IUnknownVtbl**)factory;
         facVtblIUnk->Release(factory);
 
         angle::log("allow_tearing: factory vtable detoured for already-existing ANGLE factory");
-        angle::log("[ALLOW_TEARING] === apply() END (success) ===");
     }
 
     bool isEnabled()          { return g_enabled.load(std::memory_order_acquire); }

@@ -29,10 +29,12 @@ struct Pool {
     std::mutex      mu;
     std::vector<void*> chunks;  // big allocations backing the pool
     size_t          blockSize = 0;
+    size_t          capacity = 0;
     std::atomic<int> hits{0};
     std::atomic<int> misses{0};
 
-    void init(int capacity, size_t bsize) {
+    void init(int cap, size_t bsize) {
+        capacity = cap;
         blockSize = (bsize + ALIGN - 1) & ~(ALIGN - 1);
         size_t chunkSize = blockSize * capacity;
         void* mem = VirtualAlloc(nullptr, chunkSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -66,7 +68,7 @@ struct Pool {
         for (auto* chunk : chunks) {
             auto* base = (uint8_t*)chunk;
             auto* ptr = (uint8_t*)p;
-            if (ptr >= base && ptr < base + blockSize * 8192) {
+            if (ptr >= base && ptr < base + blockSize * capacity) {
                 std::lock_guard<std::mutex> lk(mu);
                 auto* block = (Block*)p;
                 block->next = freeList;
@@ -81,7 +83,7 @@ struct Pool {
         for (auto* chunk : chunks) {
             auto* base = (uint8_t*)chunk;
             auto* ptr = (uint8_t*)p;
-            if (ptr >= base && ptr < base + blockSize * 8192) return true;
+            if (ptr >= base && ptr < base + blockSize * capacity) return true;
         }
         return false;
     }

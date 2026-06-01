@@ -1,6 +1,6 @@
 // Boost: SSE2 math
 //
-// Provides vectorised sin/cos/sqrt approximations. Modern target architectures support SSE4.1,
+// Provides vectorised sin/cos/sqrt approximations. GT 630M supports SSE4.1,
 // but we stick to SSE2 for broadest compatibility. GD calls scalar math millions
 // of times per frame inside cocos2d transforms (CCAffineTransform, particles),
 // so even a modest per-call speedup matters in hot paths.

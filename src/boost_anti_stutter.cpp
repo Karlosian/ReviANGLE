@@ -103,24 +103,12 @@ namespace boost_anti_stutter {
         }
 
         // 4. Disable foreground/background priority quantum stretching.
-        //    SetProcessPriorityBoost(FALSE, ...) per MSDN: when set to TRUE
-        //    on the *disable* parameter, the boost is suppressed; we want to
-        //    KEEP boosts so we pass FALSE here. (Documented as: TRUE = boosts
-        //    DISABLED, FALSE = boosts ENABLED.)
         SetProcessPriorityBoost(GetCurrentProcess(), FALSE);
         SetThreadPriorityBoost(GetCurrentThread(),  FALSE);
-
-        // 5. AGGRESSIVE: Set process to HIGH_PRIORITY_CLASS for lower input lag.
-        //    This is what "Game Mode" does internally. Warning: may starve background apps.
-        if (SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS)) {
-            angle::log("anti_stutter: process priority set to HIGH");
-        }
-
-        // 6. AGGRESSIVE: Set main thread to TIME_CRITICAL priority (only when focused).
-        //    This reduces scheduler jitter but MUST be used with frame_pacing
-        //    to prevent freezing the system.
-        if (SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL)) {
-            angle::log("anti_stutter: main thread priority set to TIME_CRITICAL");
-        }
+        
+        // 5. Aggressive anti-stutter: Process HIGH_PRIORITY_CLASS, Thread TIME_CRITICAL
+        SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+        angle::log("anti_stutter: aggressive mode (HIGH_PRIORITY_CLASS + TIME_CRITICAL)");
     }
 }

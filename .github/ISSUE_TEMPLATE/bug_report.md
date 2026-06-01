@@ -26,12 +26,12 @@ assignees: ""
 
 ## Environment
 
-- **ReviANGLE version**:  <!-- e.g. v2.0.0, from the release ZIP filename -->
+- **ReviANGLE version**:  <!-- e.g. v1.0.2, from the release ZIP filename -->
 - **Geometry Dash version**:  <!-- e.g. 2.2 Steam build 12345 -->
 - **OS**:  <!-- e.g. Windows 10 22H2 build 19045 -->
-- **CPU**:  <!-- e.g. Intel Core i5-10400 @ 2.9 GHz, 6C/12T -->
-- **GPU**:  <!-- e.g. NVIDIA GTX 1060, driver 546.01 -->
-- **RAM**:  <!-- e.g. 16 GB DDR4 -->
+- **CPU**:  <!-- e.g. Intel i5-3230M @ 2.6 GHz, 2C/4T -->
+- **GPU**:  <!-- e.g. NVIDIA GT 630M, driver 472.84 -->
+- **RAM**:  <!-- e.g. 8 GB DDR3 -->
 - **Display refresh**:  <!-- e.g. 90 Hz, fullscreen / windowed -->
 
 ## Other mods installed

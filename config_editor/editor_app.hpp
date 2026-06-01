@@ -20,11 +20,10 @@ private:
     void doSave();
     void doReload();
     void doResetDefaults();
-    void applyOldPcPreset();
-    void applyNewPcPreset();
     void renderTopBar();
-    void renderSidebar();
+    void renderSectionTabs();
     void renderOptionList();
+    void renderDescriptionPanel();
     void renderFooter();
     void renderConfirmModal();
 
@@ -34,12 +33,10 @@ private:
     std::string m_savedAt;                  // status message after save
     std::string m_search;                   // search filter
 
-    int  m_currentSectionIdx = 0;           // default to [ANGLE] tab
+    int  m_currentSectionIdx = 1;           // default to [Boost] tab
     int  m_selectedOptIdx    = -1;          // index in schemaAll() of option whose desc is shown
 
     // Confirm modal state.
     enum class ConfirmKind { None, Reload, ResetDefaults };
     ConfirmKind m_pendingConfirm = ConfirmKind::None;
-
-    std::string m_language = "en";          // "ru" or "en"
 };
