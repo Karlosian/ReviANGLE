@@ -2,9 +2,9 @@
 
 # ReviANGLE
 
-**A drop-in `opengl32.dll` proxy that routes Geometry Dash's OpenGL through Google ANGLE → DirectX 11/Vulkan.**
+**A drop-in `opengl32.dll` proxy that routes Geometry Dash's OpenGL through Google ANGLE → DirectX 11 or Vulkan.**
 
-*Unlock FPS, reduce input lag, eliminate microstutters — all on hardware Geometry Dash never officially targeted.*
+*Unlock FPS, reduce input lag, eliminate microstutters — all on hardware Geometry Dash never officially targeted. Now with full Vulkan backend support for maximum compatibility.*
 
 [![Build Windows](https://github.com/Reviusion/ReviANGLE/actions/workflows/build.yml/badge.svg)](https://github.com/Reviusion/ReviANGLE/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -22,7 +22,7 @@
 
 ReviANGLE is a performance mod for **Geometry Dash 2.2** that replaces the game's `opengl32.dll` with a custom proxy. The proxy:
 
-1. **Translates OpenGL → DirectX 11 / Vulkan** via [Google ANGLE](https://chromium.googlesource.com/angle/angle).
+1. **Translates OpenGL → DirectX 11 or Vulkan** via [Google ANGLE](https://chromium.googlesource.com/angle/angle) — choose the backend that works best for your GPU drivers.
 2. Adds **84 low-level performance modules** that hook into ANGLE's hot path:
    - GL state deduplication (skip 30-50 % of redundant cocos2d-x calls)
    - High-resolution frame pacing (no CPU spin)

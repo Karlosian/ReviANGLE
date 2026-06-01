@@ -96,15 +96,16 @@ If you see `ANGLE init failed` or similar, see [Troubleshooting](#troubleshootin
 ## Uninstalling
 
 Just delete the files you added:
-- `opengl32.dll`
-- `libEGL.dll`
-- `libGLESv2.dll`
-- `d3dcompiler_47.dll`
-- `angle_config.ini`
-- `gd-angle-editor.exe`
-- `angle_log.txt` (generated)
-- `shader_cache/` folder (if it exists, generated)
-- `plist_cache/` folder (if it exists, generated)
+- `opengl32.dll` (the main proxy DLL)
+- `libEGL.dll` (ANGLE core library)
+- `libGLESv2.dll` (ANGLE OpenGL ES library)
+- `d3dcompiler_47.dll` (DirectX 11 shader compiler, only needed if using d3d11 backend)
+- `angle_config.ini` (configuration file)
+- `gd-angle-editor.exe` (GUI configurator, optional)
+- `angle_log.txt` (generated diagnostic log)
+- `shader_cache/` folder (if it exists, generated at runtime)
+- `plist_cache/` folder (if it exists, generated at runtime)
+- `vk_*.dll` files (if present from Vulkan backend builds)
 
 If you renamed an original `opengl32.dll.backup`, rename it back.
 
@@ -123,13 +124,18 @@ If `angle_log.txt` doesn't appear, the mod's `DllMain` never ran — usually mea
 
 Open `angle_config.ini` and try:
 ```ini
-backend=d3d11    # Should be d3d11 by default. If it isn't, fix it.
+backend=d3d11    # Try d3d11 first (default, most compatible). If issues occur, try:
+backend=vulkan   # Modern GPUs, excellent performance, requires recent drivers
+backend=d3d9     # Weaker / older hardware fallback
 debug=true       # Enables verbose logging — very useful for diagnosing
 ```
 
 Then check `angle_log.txt` for backend selection and any `glViewport` / shader errors.
 
-If still black, try `backend=d3d9` (works on weaker / older drivers).
+**Backend recommendation:**
+- **DirectX 11** (`d3d11`): Most widely compatible, especially on older laptops. Start here.
+- **Vulkan** (`vulkan`): Better performance on modern GPUs (GTX 1000+, RTX series, Radeon RX). Requires recent driver updates.
+- **DirectX 9** (`d3d9`): Legacy fallback for very old systems.
 
 ### Lower FPS than vanilla GD
 
