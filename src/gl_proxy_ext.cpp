@@ -1051,3 +1051,512 @@ GLP_EXT_FORWARD_VOID(StencilFuncSeparate, (GLenum face, GLenum func, GLint ref, 
 GLP_EXT_FORWARD_VOID(StencilMaskSeparate, (GLenum face, GLuint mask), (face, mask))
 GLP_EXT_FORWARD_VOID(StencilOpSeparate, (GLenum face, GLenum sfail, GLenum dpfail, GLenum dppass), (face, sfail, dpfail, dppass))
 // gl_glSampleCoverage moved to gl_proxy.cpp with dedup.
+// ============================================================================
+// Desktop OpenGL compatibility: glPushAttrib / glPopAttrib
+//
+// ANGLE exposes GLES, which does not have the legacy desktop GL attribute
+// stack. MegaHack uses glPushAttrib/glPopAttrib around its rendering.
+//
+// We emulate the subset of state that MegaHack/ImGui can disturb.
+// ============================================================================
+
+#ifndef GL_FALSE
+#define GL_FALSE 0
+#endif
+#ifndef GL_TRUE
+#define GL_TRUE 1
+#endif
+
+struct GdAttribSnapshot {
+    GLint program;
+    GLint activeTexture;
+
+    GLint tex2D[8];
+
+    GLint arrayBuffer;
+    GLint elementArrayBuffer;
+    GLint vertexArray;
+
+    GLint drawFbo;
+    GLint readFbo;
+
+    GLint viewport[4];
+    GLint scissorBox[4];
+
+    GLboolean colorMask[4];
+
+    GLboolean blend;
+    GLboolean depthTest;
+    GLboolean stencilTest;
+    GLboolean cullFace;
+    GLboolean scissorTest;
+
+    GLint blendSrcRGB;
+    GLint blendDstRGB;
+    GLint blendSrcAlpha;
+    GLint blendDstAlpha;
+    GLint blendEqRGB;
+    GLint blendEqAlpha;
+
+    GLint depthFunc;
+    GLboolean depthMask;
+    GLfloat depthRange[2];
+
+    GLint stencilFunc;
+    GLint stencilValueMask;
+    GLint stencilRef;
+    GLint stencilMask;
+    GLint stencilOpFail;
+    GLint stencilOpZFail;
+    GLint stencilOpZPass;
+
+    GLint unpackAlignment;
+    GLint unpackRowLength;
+    GLint unpackSkipRows;
+    GLint unpackSkipPixels;
+
+    GLfloat clearColor[4];
+
+    struct {
+        GLboolean enabled;
+        GLint size;
+        GLenum type;
+        GLboolean normalized;
+        GLsizei stride;
+        const void* pointer;
+        GLuint buffer;
+        GLuint divisor;
+    } va[16];
+};
+
+static thread_local GdAttribSnapshot g_attribStack[16];
+static thread_local int g_attribStackDepth = 0;
+
+extern "C" __declspec(dllexport)
+void WINAPI gl_glPushAttrib(GLbitfield /*mask*/) {
+    if (g_attribStackDepth >= 16)
+        return;
+
+    typedef void (WINAPI *PFN_GI)(GLenum, GLint*);
+    typedef void (WINAPI *PFN_GB)(GLenum, GLboolean*);
+    typedef GLboolean (WINAPI *PFN_IE)(GLenum);
+    typedef void (WINAPI *PFN_AT)(GLenum);
+    typedef void (WINAPI *PFN_GF)(GLenum, GLfloat*);
+    typedef void (WINAPI *PFN_GVAIV)(GLuint, GLenum, GLint*);
+    typedef void (WINAPI *PFN_GVAPV)(GLuint, GLenum, void**);
+
+    static PFN_GI pGetI = nullptr;
+    static PFN_GB pGetB = nullptr;
+    static PFN_IE pIsEnabled = nullptr;
+    static PFN_AT pActiveTexture = nullptr;
+    static PFN_GF pGetFloatv = nullptr;
+    static PFN_GVAIV pGetVertexAttribiv = nullptr;
+    static PFN_GVAPV pGetVertexAttribPointerv = nullptr;
+
+    if (!pGetI)
+        pGetI = (PFN_GI)glproxy::resolve("glGetIntegerv");
+    if (!pGetB)
+        pGetB = (PFN_GB)glproxy::resolve("glGetBooleanv");
+    if (!pIsEnabled)
+        pIsEnabled = (PFN_IE)glproxy::resolve("glIsEnabled");
+    if (!pActiveTexture)
+        pActiveTexture = (PFN_AT)glproxy::resolve("glActiveTexture");
+    if (!pGetFloatv)
+        pGetFloatv = (PFN_GF)glproxy::resolve("glGetFloatv");
+    if (!pGetVertexAttribiv)
+        pGetVertexAttribiv =
+        (PFN_GVAIV)glproxy::resolve("glGetVertexAttribiv");
+    if (!pGetVertexAttribPointerv)
+        pGetVertexAttribPointerv =
+        (PFN_GVAPV)glproxy::resolve("glGetVertexAttribPointerv");
+
+    if (!pGetI)
+        return;
+
+    GdAttribSnapshot& s = g_attribStack[g_attribStackDepth++];
+
+    pGetI(0x8B8D, &s.program);          // GL_CURRENT_PROGRAM
+    pGetI(0x84E0, &s.activeTexture);    // GL_ACTIVE_TEXTURE
+
+    for (int i = 0; i < 8; ++i) {
+        if (pActiveTexture)
+            pActiveTexture(0x84C0 + i);  // GL_TEXTURE0 + i
+
+            pGetI(0x8069, &s.tex2D[i]);     // GL_TEXTURE_BINDING_2D
+    }
+
+    if (pActiveTexture)
+        pActiveTexture((GLenum)s.activeTexture);
+
+    pGetI(0x8894, &s.arrayBuffer);         // GL_ARRAY_BUFFER_BINDING
+    pGetI(0x8895, &s.elementArrayBuffer);  // GL_ELEMENT_ARRAY_BUFFER_BINDING
+    pGetI(0x85B5, &s.vertexArray);         // GL_VERTEX_ARRAY_BINDING
+
+    pGetI(0x8CA6, &s.drawFbo);             // GL_DRAW_FRAMEBUFFER_BINDING
+    pGetI(0x8CAA, &s.readFbo);             // GL_READ_FRAMEBUFFER_BINDING
+
+    pGetI(0x0BA2, s.viewport);             // GL_VIEWPORT
+    pGetI(0x0C10, s.scissorBox);           // GL_SCISSOR_BOX
+
+    if (pGetB)
+        pGetB(0x0C23, s.colorMask);        // GL_COLOR_WRITEMASK
+        else
+            s.colorMask[0] = s.colorMask[1] =
+            s.colorMask[2] = s.colorMask[3] = GL_TRUE;
+
+        s.blend       = pIsEnabled ? pIsEnabled(0x0BE2) : GL_FALSE;
+    s.depthTest   = pIsEnabled ? pIsEnabled(0x0B71) : GL_FALSE;
+    s.stencilTest = pIsEnabled ? pIsEnabled(0x0B90) : GL_FALSE;
+    s.cullFace    = pIsEnabled ? pIsEnabled(0x0B44) : GL_FALSE;
+    s.scissorTest = pIsEnabled ? pIsEnabled(0x0C11) : GL_FALSE;
+
+    pGetI(0x80C9, &s.blendSrcRGB);
+    pGetI(0x80C8, &s.blendDstRGB);
+    pGetI(0x80CB, &s.blendSrcAlpha);
+    pGetI(0x80CA, &s.blendDstAlpha);
+    pGetI(0x8009, &s.blendEqRGB);
+    pGetI(0x883D, &s.blendEqAlpha);
+
+    pGetI(0x0B74, &s.depthFunc);
+
+    if (pGetB)
+        pGetB(0x0B72, &s.depthMask);
+    else
+        s.depthMask = GL_TRUE;
+
+    if (pGetFloatv)
+        pGetFloatv(0x0B70, s.depthRange);
+    else {
+        s.depthRange[0] = 0.0f;
+        s.depthRange[1] = 1.0f;
+    }
+
+    pGetI(0x0B92, &s.stencilFunc);
+    pGetI(0x0B93, &s.stencilValueMask);
+    pGetI(0x0B97, &s.stencilRef);
+    pGetI(0x0B98, &s.stencilMask);
+    pGetI(0x0B94, &s.stencilOpFail);
+    pGetI(0x0B95, &s.stencilOpZFail);
+    pGetI(0x0B96, &s.stencilOpZPass);
+
+    pGetI(0x0CF5, &s.unpackAlignment);
+    pGetI(0x0CF2, &s.unpackRowLength);
+    pGetI(0x0CF3, &s.unpackSkipRows);
+    pGetI(0x0CF4, &s.unpackSkipPixels);
+
+    if (pGetFloatv)
+        pGetFloatv(0x0C22, s.clearColor);    // GL_COLOR_CLEAR_VALUE
+        else {
+            s.clearColor[0] = 0.0f;
+            s.clearColor[1] = 0.0f;
+            s.clearColor[2] = 0.0f;
+            s.clearColor[3] = 1.0f;
+        }
+
+        for (int i = 0; i < 16; ++i) {
+            auto& a = s.va[i];
+
+            a.enabled = GL_FALSE;
+            a.size = 4;
+            a.type = 0x1406;       // GL_FLOAT
+            a.normalized = GL_FALSE;
+            a.stride = 0;
+            a.pointer = nullptr;
+            a.buffer = 0;
+            a.divisor = 0;
+
+            if (!pGetVertexAttribiv)
+                continue;
+
+            GLint tmp = 0;
+
+            pGetVertexAttribiv(i, 0x8622, &tmp);  // ARRAY_ENABLED
+            a.enabled = (GLboolean)tmp;
+
+            pGetVertexAttribiv(i, 0x8623, &tmp);  // ARRAY_SIZE
+            a.size = tmp;
+
+            pGetVertexAttribiv(i, 0x8625, &tmp);  // ARRAY_TYPE
+            a.type = (GLenum)tmp;
+
+            pGetVertexAttribiv(i, 0x886A, &tmp);  // ARRAY_NORMALIZED
+            a.normalized = (GLboolean)tmp;
+
+            pGetVertexAttribiv(i, 0x8624, &tmp);  // ARRAY_STRIDE
+            a.stride = (GLsizei)tmp;
+
+            pGetVertexAttribiv(i, 0x889F, &tmp);  // ARRAY_BUFFER_BINDING
+            a.buffer = (GLuint)tmp;
+
+            pGetVertexAttribiv(i, 0x88FE, &tmp);  // ARRAY_DIVISOR
+            a.divisor = (GLuint)tmp;
+
+            if (pGetVertexAttribPointerv) {
+                void* ptr = nullptr;
+                pGetVertexAttribPointerv(i, 0x8645, &ptr); // ARRAY_POINTER
+                a.pointer = ptr;
+            }
+        }
+}
+
+static void gd_restoreAttribCap(GLenum cap, GLboolean enabled) {
+    typedef void (WINAPI *PFN_ED)(GLenum);
+
+    static PFN_ED pEnable = nullptr;
+    static PFN_ED pDisable = nullptr;
+
+    if (!pEnable)
+        pEnable = (PFN_ED)glproxy::resolve("glEnable");
+    if (!pDisable)
+        pDisable = (PFN_ED)glproxy::resolve("glDisable");
+
+    if (enabled) {
+        if (pEnable) pEnable(cap);
+    } else {
+        if (pDisable) pDisable(cap);
+    }
+}
+
+extern "C" __declspec(dllexport)
+void WINAPI gl_glPopAttrib() {
+    if (g_attribStackDepth <= 0)
+        return;
+
+    const GdAttribSnapshot s =
+    g_attribStack[--g_attribStackDepth];
+
+    typedef void (WINAPI *PFN_UP)(GLuint);
+    typedef void (WINAPI *PFN_AT)(GLenum);
+    typedef void (WINAPI *PFN_BT)(GLenum, GLuint);
+    typedef void (WINAPI *PFN_BB)(GLenum, GLuint);
+    typedef void (WINAPI *PFN_BVA)(GLuint);
+    typedef void (WINAPI *PFN_BFB)(GLenum, GLuint);
+    typedef void (WINAPI *PFN_VP)(GLint, GLint, GLsizei, GLsizei);
+    typedef void (WINAPI *PFN_CM)(GLboolean, GLboolean, GLboolean, GLboolean);
+    typedef void (WINAPI *PFN_BFS)(GLenum, GLenum, GLenum, GLenum);
+    typedef void (WINAPI *PFN_BES)(GLenum, GLenum);
+
+    static PFN_UP pUseProgram = nullptr;
+    static PFN_AT pActiveTexture = nullptr;
+    static PFN_BT pBindTexture = nullptr;
+    static PFN_BB pBindBuffer = nullptr;
+    static PFN_BVA pBindVertexArray = nullptr;
+    static PFN_BFB pBindFramebuffer = nullptr;
+    static PFN_VP pViewport = nullptr;
+    static PFN_VP pScissor = nullptr;
+    static PFN_CM pColorMask = nullptr;
+    static PFN_BFS pBlendFuncSeparate = nullptr;
+    static PFN_BES pBlendEquationSeparate = nullptr;
+
+    if (!pUseProgram)
+        pUseProgram = (PFN_UP)glproxy::resolve("glUseProgram");
+    if (!pActiveTexture)
+        pActiveTexture = (PFN_AT)glproxy::resolve("glActiveTexture");
+    if (!pBindTexture)
+        pBindTexture = (PFN_BT)glproxy::resolve("glBindTexture");
+    if (!pBindBuffer)
+        pBindBuffer = (PFN_BB)glproxy::resolve("glBindBuffer");
+    if (!pBindVertexArray)
+        pBindVertexArray = (PFN_BVA)glproxy::resolve("glBindVertexArray");
+    if (!pBindFramebuffer)
+        pBindFramebuffer = (PFN_BFB)glproxy::resolve("glBindFramebuffer");
+    if (!pViewport)
+        pViewport = (PFN_VP)glproxy::resolve("glViewport");
+    if (!pScissor)
+        pScissor = (PFN_VP)glproxy::resolve("glScissor");
+    if (!pColorMask)
+        pColorMask = (PFN_CM)glproxy::resolve("glColorMask");
+    if (!pBlendFuncSeparate)
+        pBlendFuncSeparate =
+        (PFN_BFS)glproxy::resolve("glBlendFuncSeparate");
+    if (!pBlendEquationSeparate)
+        pBlendEquationSeparate =
+        (PFN_BES)glproxy::resolve("glBlendEquationSeparate");
+
+    if (pBindFramebuffer) {
+        pBindFramebuffer(0x8CA8, s.readFbo);
+        pBindFramebuffer(0x8CA9, s.drawFbo);
+    }
+
+    if (pUseProgram)
+        pUseProgram((GLuint)s.program);
+
+    if (pBindVertexArray)
+        pBindVertexArray((GLuint)s.vertexArray);
+
+    if (pBindBuffer) {
+        pBindBuffer(0x8892, (GLuint)s.arrayBuffer);
+        pBindBuffer(0x8893, (GLuint)s.elementArrayBuffer);
+    }
+
+    if (pActiveTexture && pBindTexture) {
+        for (int i = 0; i < 8; ++i) {
+            pActiveTexture(0x84C0 + i);
+            pBindTexture(0x0DE1, (GLuint)s.tex2D[i]);
+        }
+        pActiveTexture((GLenum)s.activeTexture);
+    }
+
+    if (pViewport)
+        pViewport(s.viewport[0], s.viewport[1],
+                  s.viewport[2], s.viewport[3]);
+
+        if (pScissor)
+            pScissor(s.scissorBox[0], s.scissorBox[1],
+                     s.scissorBox[2], s.scissorBox[3]);
+
+            if (pColorMask)
+                pColorMask(s.colorMask[0], s.colorMask[1],
+                           s.colorMask[2], s.colorMask[3]);
+
+                gd_restoreAttribCap(0x0BE2, s.blend);
+            gd_restoreAttribCap(0x0B71, s.depthTest);
+        gd_restoreAttribCap(0x0B90, s.stencilTest);
+        gd_restoreAttribCap(0x0B44, s.cullFace);
+        gd_restoreAttribCap(0x0C11, s.scissorTest);
+
+        if (pBlendFuncSeparate)
+            pBlendFuncSeparate(
+                (GLenum)s.blendSrcRGB, (GLenum)s.blendDstRGB,
+                               (GLenum)s.blendSrcAlpha, (GLenum)s.blendDstAlpha);
+
+            if (pBlendEquationSeparate)
+                pBlendEquationSeparate(
+                    (GLenum)s.blendEqRGB, (GLenum)s.blendEqAlpha);
+
+                typedef void (WINAPI *PFN_DF)(GLenum);
+            typedef void (WINAPI *PFN_DM)(GLboolean);
+        typedef void (WINAPI *PFN_DR)(GLfloat, GLfloat);
+        typedef void (WINAPI *PFN_SF)(GLenum, GLint, GLuint);
+        typedef void (WINAPI *PFN_SM)(GLuint);
+        typedef void (WINAPI *PFN_SO)(GLenum, GLenum, GLenum);
+
+        static PFN_DF pDepthFunc = nullptr;
+        static PFN_DM pDepthMask = nullptr;
+        static PFN_DR pDepthRange = nullptr;
+        static PFN_SF pStencilFunc = nullptr;
+        static PFN_SM pStencilMask = nullptr;
+        static PFN_SO pStencilOp = nullptr;
+
+        if (!pDepthFunc)
+            pDepthFunc = (PFN_DF)glproxy::resolve("glDepthFunc");
+    if (!pDepthMask)
+        pDepthMask = (PFN_DM)glproxy::resolve("glDepthMask");
+    if (!pDepthRange)
+        pDepthRange = (PFN_DR)glproxy::resolve("glDepthRangef");
+    if (!pStencilFunc)
+        pStencilFunc = (PFN_SF)glproxy::resolve("glStencilFunc");
+    if (!pStencilMask)
+        pStencilMask = (PFN_SM)glproxy::resolve("glStencilMask");
+    if (!pStencilOp)
+        pStencilOp = (PFN_SO)glproxy::resolve("glStencilOp");
+
+    if (pDepthFunc)
+        pDepthFunc((GLenum)s.depthFunc);
+    if (pDepthMask)
+        pDepthMask(s.depthMask);
+    if (pDepthRange)
+        pDepthRange(s.depthRange[0], s.depthRange[1]);
+
+    if (pStencilFunc)
+        pStencilFunc(
+            (GLenum)s.stencilFunc,
+                     s.stencilRef,
+                     (GLuint)s.stencilValueMask);
+
+        if (pStencilMask)
+            pStencilMask((GLuint)s.stencilMask);
+
+    if (pStencilOp)
+        pStencilOp(
+            (GLenum)s.stencilOpFail,
+                   (GLenum)s.stencilOpZFail,
+                   (GLenum)s.stencilOpZPass);
+
+        typedef void (WINAPI *PFN_PS)(GLenum, GLint);
+    static PFN_PS pPixelStorei = nullptr;
+
+    if (!pPixelStorei)
+        pPixelStorei = (PFN_PS)glproxy::resolve("glPixelStorei");
+
+    if (pPixelStorei) {
+        pPixelStorei(0x0CF5, s.unpackAlignment);
+        pPixelStorei(0x0CF2, s.unpackRowLength);
+        pPixelStorei(0x0CF3, s.unpackSkipRows);
+        pPixelStorei(0x0CF4, s.unpackSkipPixels);
+    }
+
+    typedef void (WINAPI *PFN_CC)(GLfloat, GLfloat, GLfloat, GLfloat);
+    static PFN_CC pClearColor = nullptr;
+
+    if (!pClearColor)
+        pClearColor = (PFN_CC)glproxy::resolve("glClearColor");
+
+    if (pClearColor)
+        pClearColor(
+            s.clearColor[0], s.clearColor[1],
+            s.clearColor[2], s.clearColor[3]);
+
+        typedef void (WINAPI *PFN_VAP)(
+            GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
+        typedef void (WINAPI *PFN_E)(GLuint);
+    typedef void (WINAPI *PFN_VAD)(GLuint, GLuint);
+
+    static PFN_VAP pVertexAttribPointer = nullptr;
+    static PFN_E pEnableVAA = nullptr;
+    static PFN_E pDisableVAA = nullptr;
+    static PFN_VAD pVertexAttribDivisor = nullptr;
+
+    if (!pVertexAttribPointer)
+        pVertexAttribPointer =
+        (PFN_VAP)glproxy::resolve("glVertexAttribPointer");
+    if (!pEnableVAA)
+        pEnableVAA =
+        (PFN_E)glproxy::resolve("glEnableVertexAttribArray");
+    if (!pDisableVAA)
+        pDisableVAA =
+        (PFN_E)glproxy::resolve("glDisableVertexAttribArray");
+    if (!pVertexAttribDivisor)
+        pVertexAttribDivisor =
+        (PFN_VAD)glproxy::resolve("glVertexAttribDivisor");
+
+    for (int i = 0; i < 16; ++i) {
+        const auto& a = s.va[i];
+
+        if (pBindBuffer)
+            pBindBuffer(0x8892, a.buffer);
+
+        if (pVertexAttribPointer)
+            pVertexAttribPointer(
+                i, a.size, a.type, a.normalized,
+                a.stride, a.pointer);
+
+            if (pVertexAttribDivisor)
+                pVertexAttribDivisor(i, a.divisor);
+
+        if (a.enabled) {
+            if (pEnableVAA)
+                pEnableVAA(i);
+        } else {
+            if (pDisableVAA)
+                pDisableVAA(i);
+        }
+    }
+
+    if (pBindBuffer)
+        pBindBuffer(0x8892, (GLuint)s.arrayBuffer);
+
+    // These restores bypass ReviANGLE's state caches.
+    // Make sure the next normal game call isn't incorrectly deduplicated.
+    gdangle_invalidateVAPCache();
+}
+
+extern "C" __declspec(dllexport)
+void WINAPI gl_glPushClientAttrib(GLbitfield mask) {
+    gl_glPushAttrib(mask);
+}
+
+extern "C" __declspec(dllexport)
+void WINAPI gl_glPopClientAttrib() {
+    gl_glPopAttrib();
+}

@@ -1,0 +1,26 @@
+name: Build ReviANGLE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release
+
+      - name: Upload ReviANGLE DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReviANGLE-Vulkan-patched
+          path: build/Release/opengl32.dll
