@@ -12,13 +12,26 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure CMake
-        run: cmake -B build -A x64 -DREVIANGLE_BACKEND_D3D11=OFF -DREVIANGLE_BACKEND_VULKAN=ON
+        run: |
+          cmake -B build -A x64 `
+            -DREVIANGLE_BACKEND_D3D11=OFF `
+            -DREVIANGLE_BACKEND_VULKAN=ON
 
       - name: Build
-        run: cmake --build build --config Release --target opengl32
+        run: |
+          cmake --build build --config Release --target opengl32
+
+      - name: Find DLL
+        shell: pwsh
+        run: |
+          Write-Host "Searching for opengl32.dll..."
+          Get-ChildItem -Path build -Filter opengl32.dll -Recurse | ForEach-Object {
+            Write-Host $_.FullName
+          }
 
       - name: Upload ReviANGLE DLL
         uses: actions/upload-artifact@v4
         with:
           name: ReviANGLE-Vulkan-patched
-          path: build/dll/opengl32.dll
+          path: build/**/opengl32.dll
+          if-no-files-found: error
